@@ -140,6 +140,37 @@ All CRUD goes through stored procedures. The application SQL login has EXECUTE-o
 
 See [`docs/SetupGuide.md`](docs/SetupGuide.md) for full IIS + SQL Server production deployment instructions.
 
+### Automated IIS deployment
+
+[`.github/workflows/deploy.yml`](.github/workflows/deploy.yml) ships a two-stage pipeline:
+
+1. **`publish`** (ubuntu-latest) — `dotnet publish -r win-x64 --self-contained false` and uploads the artifact.
+2. **`deploy`** (self-hosted Windows runner) — downloads the artifact, stops the IIS app pool, takes a timestamped backup of the existing site, syncs the new files via `robocopy /MIR`, restarts the pool, and smoke-tests `/health` (10 attempts × 3 s).
+
+Triggers: push to `main`, push of a `v*` tag, or manual `workflow_dispatch` (with environment dropdown).
+
+#### Required setup on the IIS server (one-time)
+
+1. Install the [GitHub Actions self-hosted runner](https://github.com/Out-Of-Box-Thinking/Brusca.Api/settings/actions/runners/new).
+2. Install the **ASP.NET Core 9 Hosting Bundle** so IIS can host the API.
+3. Create the IIS site + app pool (No Managed Code) pointing at the deploy path.
+4. (Recommended) Add a GitHub Environment named `production` with manual approval.
+
+#### Configurable via repo Variables (with sensible defaults)
+
+| Variable | Default |
+|----------|---------|
+| `IIS_SITE_NAME` | `BruscaApi` |
+| `IIS_APP_POOL` | `BruscaApiPool` |
+| `IIS_PHYSICAL_PATH` | `C:\inetpub\Brusca\api` |
+| `IIS_HEALTH_URL` | `http://localhost/health` |
+
+---
+
+## Continuous integration
+
+[`.github/workflows/ci.yml`](.github/workflows/ci.yml) runs on push or PR to `main`: `dotnet restore` → `dotnet build` → `dotnet publish` → uploads the publish output as a build artifact.
+
 ---
 
 ## Target framework
