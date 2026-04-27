@@ -1,0 +1,115 @@
+name: Deploy to IIS
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Target environment
+        required: true
+        default: production
+        type: choice
+        options:
+          - production
+          - staging
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    outputs:
+      artifact-name: ${{ steps.meta.outputs.artifact-name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - id: meta
+        run: echo "artifact-name=brusca-api-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Publish (win-x64, IIS-ready)
+        run: |
+          dotnet publish Brusca.Api/Brusca.Api.csproj \
+            --configuration Release \
+            --runtime win-x64 \
+            --self-contained false \
+            --output publish \
+            /p:PublishProfile=DefaultContainer=false /p:UseAppHost=false
+
+      - name: Upload publish artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.meta.outputs.artifact-name }}
+          path: publish/
+
+  deploy:
+    needs: publish
+    runs-on: self-hosted
+    environment: ${{ inputs.environment || 'production' }}
+    env:
+      IIS_SITE_NAME:    ${{ vars.IIS_SITE_NAME    || 'BruscaApi' }}
+      IIS_APP_POOL:     ${{ vars.IIS_APP_POOL     || 'BruscaApiPool' }}
+      IIS_PHYSICAL_PATH: ${{ vars.IIS_PHYSICAL_PATH || 'C:\inetpub\Brusca\api' }}
+    steps:
+      - name: Download publish artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.publish.outputs.artifact-name }}
+          path: publish
+
+      - name: Stop IIS app pool
+        shell: pwsh
+        run: |
+          Import-Module WebAdministration
+          if (Test-Path "IIS:\AppPools\$env:IIS_APP_POOL") {
+            $state = (Get-WebAppPoolState -Name $env:IIS_APP_POOL).Value
+            if ($state -ne 'Stopped') { Stop-WebAppPool -Name $env:IIS_APP_POOL }
+            do { Start-Sleep -Seconds 1 } while ((Get-WebAppPoolState -Name $env:IIS_APP_POOL).Value -ne 'Stopped')
+          }
+
+      - name: Backup current deployment
+        shell: pwsh
+        run: |
+          if (Test-Path $env:IIS_PHYSICAL_PATH) {
+            $backup = "$env:IIS_PHYSICAL_PATH.bak-$(Get-Date -Format yyyyMMddHHmmss)"
+            Copy-Item -Path $env:IIS_PHYSICAL_PATH -Destination $backup -Recurse -Force
+            Write-Host "Backed up to $backup"
+          } else {
+            New-Item -ItemType Directory -Path $env:IIS_PHYSICAL_PATH -Force | Out-Null
+          }
+
+      - name: Sync publish output to IIS site
+        shell: pwsh
+        run: |
+          robocopy publish $env:IIS_PHYSICAL_PATH /MIR /R:2 /W:2 /NFL /NDL /NJH /NJS /NC /NS
+          if ($LASTEXITCODE -ge 8) { exit $LASTEXITCODE } else { exit 0 }
+
+      - name: Start IIS app pool
+        shell: pwsh
+        run: |
+          Import-Module WebAdministration
+          Start-WebAppPool -Name $env:IIS_APP_POOL
+          do { Start-Sleep -Seconds 1 } while ((Get-WebAppPoolState -Name $env:IIS_APP_POOL).Value -ne 'Started')
+
+      - name: Smoke-test /health
+        shell: pwsh
+        run: |
+          $url = "${{ vars.IIS_HEALTH_URL }}"
+          if ([string]::IsNullOrWhiteSpace($url)) { $url = "http://localhost/health" }
+          $maxAttempts = 10
+          for ($i = 1; $i -le $maxAttempts; $i++) {
+            try {
+              $r = Invoke-WebRequest -Uri $url -UseBasicParsing -TimeoutSec 5
+              if ($r.StatusCode -eq 200) { Write-Host "Health OK ($url)"; exit 0 }
+            } catch { Write-Host "Attempt $i failed: $($_.Exception.Message)" }
+            Start-Sleep -Seconds 3
+          }
+          Write-Error "Health check failed after $maxAttempts attempts"
+          exit 1
