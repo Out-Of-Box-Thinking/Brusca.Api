@@ -152,6 +152,7 @@ See [`docs/SetupGuide.md`](docs/SetupGuide.md) for full IIS + SQL Server product
 
 | Repo | Role |
 |------|------|
-| [Brusca.Core](../Brusca.Core) | Domain kernel — interfaces and models (NuGet) |
-| [Brusca.Infrastructure](../Brusca.Infrastructure) | Infrastructure implementations (NuGet) |
-| [Brusca.Tests](../Brusca.Tests) | xUnit integration and unit tests |
+| [Brusca.Core](https://github.com/Out-Of-Box-Thinking/Brusca.Core) | Domain kernel — interfaces and models (NuGet) |
+| [Brusca.Infrastructure](https://github.com/Out-Of-Box-Thinking/Brusca.Infrastructure) | Infrastructure implementations (NuGet) |
+| [Brusca.Tests](https://github.com/Out-Of-Box-Thinking/Brusca.Tests) | xUnit integration and unit tests |
+| [Brusca.Web](https://github.com/Out-Of-Box-Thinking/Brusca.Web) | Astro 5 front-end |
