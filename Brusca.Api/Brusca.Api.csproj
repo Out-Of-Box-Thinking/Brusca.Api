@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <AssemblyName>Brusca.Api</AssemblyName>
+    <RootNamespace>Brusca.Api</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <UserSecretsId>brusca-api-secrets</UserSecretsId>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Core domain and infrastructure — consumed as NuGet packages from the shared local feed during development -->
+    <PackageReference Include="Brusca.Core" Version="1.0.*" />
+    <PackageReference Include="Brusca.Infrastructure" Version="1.0.*" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- JWT auth -->
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="9.0.*" />
+    <!-- Active Directory (optional, wired via config flag) -->
+    <PackageReference Include="Microsoft.Identity.Web" Version="3.*" />
+    <!-- OpenAPI -->
+    <PackageReference Include="Scalar.AspNetCore" Version="2.*" />
+    <!-- Validation -->
+    <PackageReference Include="FluentValidation.AspNetCore" Version="11.*" />
+    <!-- Mapping -->
+    <PackageReference Include="AutoMapper.Extensions.Microsoft.DependencyInjection" Version="12.*" />
+    <!-- Health checks -->
+    <PackageReference Include="AspNetCore.HealthChecks.SqlServer" Version="9.*" />
+    <!-- Rate limiting (built-in, no extra package needed in .NET 9) -->
+    <PackageReference Include="FluentResults" Version="3.*" />
+  </ItemGroup>
+
+</Project>

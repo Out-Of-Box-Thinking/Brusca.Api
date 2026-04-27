@@ -1,0 +1,31 @@
+## .NET
+*.user
+*.suo
+bin/
+obj/
+.vs/
+*.log
+
+## User secrets / sensitive config
+appsettings.Development.json
+secrets.json
+
+## SQL Server data files
+*.mdf
+*.ldf
+*.ndf
+
+## Node / Astro
+ui/node_modules/
+ui/dist/
+ui/.astro/
+
+## Logs
+logs/
+
+## Publish output
+publish/
+
+## OS
+.DS_Store
+Thumbs.db

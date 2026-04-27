@@ -1,0 +1,35 @@
+---
+// src/layouts/Layout.astro
+interface Props {
+  title?: string;
+}
+const { title = 'Brusca' } = Astro.props;
+---
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{title} — Brusca File Organizer</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  </head>
+  <body class="bg-gray-50 text-gray-900 min-h-screen font-sans antialiased">
+    <header class="bg-white border-b border-gray-200 px-6 py-4 flex items-center gap-4">
+      <div class="flex items-center gap-2">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" class="text-indigo-600">
+          <path d="M3 7a2 2 0 012-2h14a2 2 0 012 2v10a2 2 0 01-2 2H5a2 2 0 01-2-2V7z"
+                stroke="currentColor" stroke-width="1.5"/>
+          <path d="M3 7l9 6 9-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span class="font-semibold text-lg tracking-tight">Brusca</span>
+      </div>
+      <nav class="flex gap-6 ml-4 text-sm text-gray-500">
+        <a href="/" class="hover:text-gray-900 transition-colors">Cleanings</a>
+        <a href="/extensions" class="hover:text-gray-900 transition-colors">Extensions</a>
+      </nav>
+    </header>
+    <main class="max-w-5xl mx-auto px-6 py-8">
+      <slot />
+    </main>
+  </body>
+</html>
