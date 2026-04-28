@@ -380,3 +380,188 @@ END;
 GO
 
 PRINT 'PII pipeline stored procedures created.';
+
+-- =============================================================================
+-- COWORK-PARITY ADDITIONS — slot catalog, dedupe, promotion, plan-update
+-- =============================================================================
+
+-- ─── cleaning.usp_RedactedFilePiiKind_Insert ─────────────────────────────────
+CREATE OR ALTER PROCEDURE [cleaning].[usp_RedactedFilePiiKind_Insert]
+    @RedactedFileId UNIQUEIDENTIFIER,
+    @PiiKind        INT,
+    @Count          INT = 1
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    INSERT INTO [cleaning].[RedactedFilePiiKind]
+        ([Id], [RedactedFileId], [PiiKind], [Count], [CreatedAtUtc])
+    VALUES
+        (NEWID(), @RedactedFileId, @PiiKind, @Count, SYSUTCDATETIME());
+END;
+GO
+
+-- ─── cleaning.usp_RedactedFile_GetSlotCatalog ────────────────────────────────
+-- Returns one row per (DocumentType, PiiKind) pair observed for the cleaning.
+-- The host groups by DocumentType to build the per-type slot vocabulary.
+CREATE OR ALTER PROCEDURE [cleaning].[usp_RedactedFile_GetSlotCatalog]
+    @CleaningId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT DISTINCT f.[DocumentType], k.[PiiKind]
+    FROM   [cleaning].[RedactedFile]        f
+    JOIN   [cleaning].[RedactedFilePiiKind] k ON k.[RedactedFileId] = f.[Id]
+    WHERE  f.[CleaningId] = @CleaningId
+    ORDER BY f.[DocumentType], k.[PiiKind];
+END;
+GO
+
+-- ─── cleaning.usp_RedactedFile_GetDuplicateGroups ────────────────────────────
+-- Two result sets:
+--   1) (ContentHash, KeepRedactedFileId)  -- one row per duplicate group;
+--      keeper is the alphabetically-first OriginalFilePath (KeepFirstPath).
+--   2) (ContentHash, RedactedFileId)      -- every member of every group.
+CREATE OR ALTER PROCEDURE [cleaning].[usp_RedactedFile_GetDuplicateGroups]
+    @CleaningId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    ;WITH dups AS (
+        SELECT [ContentHash]
+        FROM   [cleaning].[RedactedFile]
+        WHERE  [CleaningId] = @CleaningId
+          AND  [ContentHash] IS NOT NULL
+        GROUP BY [ContentHash]
+        HAVING COUNT_BIG(*) > 1
+    ),
+    ranked AS (
+        SELECT f.[ContentHash], f.[Id] AS [RedactedFileId], f.[OriginalFilePath],
+               ROW_NUMBER() OVER (PARTITION BY f.[ContentHash]
+                                  ORDER BY f.[OriginalFilePath]) AS [rn]
+        FROM   [cleaning].[RedactedFile] f
+        JOIN   dups d ON d.[ContentHash] = f.[ContentHash]
+        WHERE  f.[CleaningId] = @CleaningId
+    )
+    SELECT [ContentHash], [RedactedFileId] AS [KeepRedactedFileId]
+    FROM   ranked
+    WHERE  [rn] = 1
+    ORDER BY [ContentHash];
+
+    SELECT f.[ContentHash], f.[Id] AS [RedactedFileId]
+    FROM   [cleaning].[RedactedFile] f
+    JOIN   (SELECT [ContentHash] FROM [cleaning].[RedactedFile]
+            WHERE [CleaningId] = @CleaningId AND [ContentHash] IS NOT NULL
+            GROUP BY [ContentHash] HAVING COUNT_BIG(*) > 1) d
+        ON d.[ContentHash] = f.[ContentHash]
+    WHERE  f.[CleaningId] = @CleaningId
+    ORDER BY f.[ContentHash], f.[OriginalFilePath];
+END;
+GO
+
+-- ─── cleaning.usp_FileRelocation_GetById ─────────────────────────────────────
+CREATE OR ALTER PROCEDURE [cleaning].[usp_FileRelocation_GetById]
+    @Id UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT [Id], [CleaningId], [RedactedFileId], [OperationType], [ExecutionTarget],
+           [BeforePath], [BeforeName], [AfterPath], [AfterName],
+           [Status], [ErrorMessage], [CreatedAtUtc], [CompletedAtUtc], [ContentHashAfter]
+    FROM   [cleaning].[FileRelocation]
+    WHERE  [Id] = @Id;
+END;
+GO
+
+-- ─── cleaning.usp_FileRelocation_UpdateAfter ─────────────────────────────────
+CREATE OR ALTER PROCEDURE [cleaning].[usp_FileRelocation_UpdateAfter]
+    @Id               UNIQUEIDENTIFIER,
+    @AfterPath        NVARCHAR(1024) = NULL,
+    @AfterName        NVARCHAR(512)  = NULL,
+    @Status           INT,
+    @ErrorMessage     NVARCHAR(2000) = NULL,
+    @ContentHashAfter CHAR(64)       = NULL,
+    @CompletedAtUtc   DATETIME2(7)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    UPDATE [cleaning].[FileRelocation]
+    SET    [AfterPath]        = @AfterPath,
+           [AfterName]        = @AfterName,
+           [Status]           = @Status,
+           [ErrorMessage]     = @ErrorMessage,
+           [ContentHashAfter] = @ContentHashAfter,
+           [CompletedAtUtc]   = @CompletedAtUtc
+    WHERE  [Id] = @Id;
+END;
+GO
+
+-- ─── cleaning.usp_PromotionRecord_Insert ─────────────────────────────────────
+CREATE OR ALTER PROCEDURE [cleaning].[usp_PromotionRecord_Insert]
+    @Id               UNIQUEIDENTIFIER,
+    @CleaningId       UNIQUEIDENTIFIER,
+    @FileRelocationId UNIQUEIDENTIFIER,
+    @OriginalPath     NVARCHAR(1024),
+    @Status           INT,
+    @ErrorMessage     NVARCHAR(2000) = NULL,
+    @VerifiedAtUtc    DATETIME2(7)   = NULL,
+    @PromotedAtUtc    DATETIME2(7)   = NULL,
+    @CreatedAtUtc     DATETIME2(7)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    INSERT INTO [cleaning].[PromotionRecord]
+        ([Id], [CleaningId], [FileRelocationId], [OriginalPath], [Status],
+         [ErrorMessage], [VerifiedAtUtc], [PromotedAtUtc], [CreatedAtUtc])
+    VALUES
+        (@Id, @CleaningId, @FileRelocationId, @OriginalPath, @Status,
+         @ErrorMessage, @VerifiedAtUtc, @PromotedAtUtc, @CreatedAtUtc);
+END;
+GO
+
+-- ─── cleaning.usp_PromotionRecord_UpdateStatus ───────────────────────────────
+CREATE OR ALTER PROCEDURE [cleaning].[usp_PromotionRecord_UpdateStatus]
+    @Id            UNIQUEIDENTIFIER,
+    @Status        INT,
+    @ErrorMessage  NVARCHAR(2000) = NULL,
+    @VerifiedAtUtc DATETIME2(7)   = NULL,
+    @PromotedAtUtc DATETIME2(7)   = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    UPDATE [cleaning].[PromotionRecord]
+    SET    [Status]        = @Status,
+           [ErrorMessage]  = @ErrorMessage,
+           [VerifiedAtUtc] = @VerifiedAtUtc,
+           [PromotedAtUtc] = @PromotedAtUtc
+    WHERE  [Id] = @Id;
+END;
+GO
+
+-- ─── cleaning.usp_PromotionRecord_GetByCleaningId ────────────────────────────
+CREATE OR ALTER PROCEDURE [cleaning].[usp_PromotionRecord_GetByCleaningId]
+    @CleaningId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT [Id], [CleaningId], [FileRelocationId], [OriginalPath], [Status],
+           [ErrorMessage], [VerifiedAtUtc], [PromotedAtUtc], [CreatedAtUtc]
+    FROM   [cleaning].[PromotionRecord]
+    WHERE  [CleaningId] = @CleaningId
+    ORDER BY [CreatedAtUtc] ASC;
+END;
+GO
+
+PRINT 'Cowork-parity stored procedures created.';
+GO

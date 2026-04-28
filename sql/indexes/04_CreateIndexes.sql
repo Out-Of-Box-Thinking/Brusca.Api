@@ -313,4 +313,62 @@ BEGIN
 END
 GO
 
+-- ─── cleaning.RedactedFilePiiKind ────────────────────────────────────────────
+IF OBJECT_ID(N'[cleaning].[RedactedFilePiiKind]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_cleaning_RedactedFilePiiKind_RedactedFileId'
+       AND object_id = OBJECT_ID(N'[cleaning].[RedactedFilePiiKind]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_cleaning_RedactedFilePiiKind_RedactedFileId]
+        ON [cleaning].[RedactedFilePiiKind]([RedactedFileId] ASC)
+        INCLUDE ([PiiKind], [Count])
+        ON [FG_Index];
+    PRINT 'Index IX_cleaning_RedactedFilePiiKind_RedactedFileId created.';
+END
+GO
+
+-- ─── cleaning.RedactedFile (ContentHash for dedupe) ──────────────────────────
+IF OBJECT_ID(N'[cleaning].[RedactedFile]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_cleaning_RedactedFile_ContentHash'
+       AND object_id = OBJECT_ID(N'[cleaning].[RedactedFile]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_cleaning_RedactedFile_ContentHash]
+        ON [cleaning].[RedactedFile]([CleaningId] ASC, [ContentHash] ASC)
+        WHERE [ContentHash] IS NOT NULL
+        ON [FG_Index];
+    PRINT 'Index IX_cleaning_RedactedFile_ContentHash created.';
+END
+GO
+
+-- ─── cleaning.PromotionRecord ────────────────────────────────────────────────
+IF OBJECT_ID(N'[cleaning].[PromotionRecord]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_cleaning_PromotionRecord_CleaningId'
+       AND object_id = OBJECT_ID(N'[cleaning].[PromotionRecord]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_cleaning_PromotionRecord_CleaningId]
+        ON [cleaning].[PromotionRecord]([CleaningId] ASC, [CreatedAtUtc] ASC)
+        INCLUDE ([Status])
+        ON [FG_Index];
+    PRINT 'Index IX_cleaning_PromotionRecord_CleaningId created.';
+END
+GO
+
+-- ─── archive.RedactedFilePiiKind / PromotionRecord ───────────────────────────
+IF OBJECT_ID(N'[archive].[RedactedFilePiiKind]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_archive_RedactedFilePiiKind_RedactedFileId'
+       AND object_id = OBJECT_ID(N'[archive].[RedactedFilePiiKind]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_archive_RedactedFilePiiKind_RedactedFileId]
+        ON [archive].[RedactedFilePiiKind]([RedactedFileId] ASC) ON [FG_Index];
+END
+GO
+
+IF OBJECT_ID(N'[archive].[PromotionRecord]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_archive_PromotionRecord_CleaningId'
+       AND object_id = OBJECT_ID(N'[archive].[PromotionRecord]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_archive_PromotionRecord_CleaningId]
+        ON [archive].[PromotionRecord]([CleaningId] ASC) ON [FG_Index];
+END
+GO
+
 PRINT '04_CreateIndexes.sql complete.';

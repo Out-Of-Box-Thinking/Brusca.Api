@@ -244,13 +244,39 @@ BEGIN
         WHERE  [CleaningId] = @Id;
     END;
 
+    -- Cowork-parity additions: RedactedFilePiiKind + PromotionRecord
+    IF OBJECT_ID(N'[cleaning].[RedactedFilePiiKind]', N'U') IS NOT NULL
+    BEGIN
+        INSERT INTO [archive].[RedactedFilePiiKind]
+            ([Id], [RedactedFileId], [PiiKind], [Count], [CreatedAtUtc], [ArchivedAtUtc])
+        SELECT k.[Id], k.[RedactedFileId], k.[PiiKind], k.[Count], k.[CreatedAtUtc], @stamp
+        FROM   [cleaning].[RedactedFilePiiKind] k
+        JOIN   [cleaning].[RedactedFile]        f ON f.[Id] = k.[RedactedFileId]
+        WHERE  f.[CleaningId] = @Id;
+    END;
+
+    IF OBJECT_ID(N'[cleaning].[PromotionRecord]', N'U') IS NOT NULL
+    BEGIN
+        INSERT INTO [archive].[PromotionRecord]
+            ([Id], [CleaningId], [FileRelocationId], [OriginalPath], [Status],
+             [ErrorMessage], [VerifiedAtUtc], [PromotedAtUtc], [CreatedAtUtc], [ArchivedAtUtc])
+        SELECT [Id], [CleaningId], [FileRelocationId], [OriginalPath], [Status],
+               [ErrorMessage], [VerifiedAtUtc], [PromotedAtUtc], [CreatedAtUtc], @stamp
+        FROM   [cleaning].[PromotionRecord]
+        WHERE  [CleaningId] = @Id;
+    END;
+
     -- 3. Delete from working tables in dependency order.
+    IF OBJECT_ID(N'[cleaning].[PromotionRecord]', N'U') IS NOT NULL
+        DELETE FROM [cleaning].[PromotionRecord] WHERE [CleaningId] = @Id;
+
     IF OBJECT_ID(N'[cleaning].[FileRelocation]', N'U') IS NOT NULL
         DELETE FROM [cleaning].[FileRelocation] WHERE [CleaningId] = @Id;
 
     IF OBJECT_ID(N'[cleaning].[StructurePlan]', N'U') IS NOT NULL
         DELETE FROM [cleaning].[StructurePlan] WHERE [CleaningId] = @Id;
 
+    -- RedactedFilePiiKind cascades via FK on RedactedFile delete.
     IF OBJECT_ID(N'[cleaning].[RedactedFile]', N'U') IS NOT NULL
         DELETE FROM [cleaning].[RedactedFile] WHERE [CleaningId] = @Id;
 

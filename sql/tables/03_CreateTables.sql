@@ -511,4 +511,90 @@ END
 ELSE PRINT 'Table [archive].[FileRelocation] already exists.';
 GO
 
+-- ─── cleaning.RedactedFilePiiKind ────────────────────────────────────────────
+-- One row per (RedactedFileId, PiiKind) so we can assemble the per-DocumentType
+-- slot vocabulary that gets sent to Claude. Count is reserved for future
+-- weighting; the slot catalog only consults DISTINCT PiiKind today.
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[cleaning].[RedactedFilePiiKind]') AND type = 'U')
+BEGIN
+    CREATE TABLE [cleaning].[RedactedFilePiiKind]
+    (
+        [Id]             UNIQUEIDENTIFIER NOT NULL CONSTRAINT [DF_cleaning_RedactedFilePiiKind_Id] DEFAULT (NEWID()),
+        [RedactedFileId] UNIQUEIDENTIFIER NOT NULL,
+        [PiiKind]        INT              NOT NULL,
+        [Count]          INT              NOT NULL CONSTRAINT [DF_cleaning_RedactedFilePiiKind_Count] DEFAULT (1),
+        [CreatedAtUtc]   DATETIME2(7)     NOT NULL CONSTRAINT [DF_cleaning_RedactedFilePiiKind_CreatedAtUtc] DEFAULT (SYSUTCDATETIME()),
+        CONSTRAINT [PK_cleaning_RedactedFilePiiKind] PRIMARY KEY CLUSTERED ([Id]) ON [FG_Data],
+        CONSTRAINT [FK_cleaning_RedactedFilePiiKind_RedactedFile]
+            FOREIGN KEY ([RedactedFileId]) REFERENCES [cleaning].[RedactedFile]([Id]) ON DELETE CASCADE
+    ) ON [FG_Data];
+    PRINT 'Table [cleaning].[RedactedFilePiiKind] created.';
+END
+ELSE PRINT 'Table [cleaning].[RedactedFilePiiKind] already exists.';
+GO
+
+-- ─── cleaning.PromotionRecord ────────────────────────────────────────────────
+-- One row per opt-in recycle-bin promotion of a materialized copy.
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[cleaning].[PromotionRecord]') AND type = 'U')
+BEGIN
+    CREATE TABLE [cleaning].[PromotionRecord]
+    (
+        [Id]               UNIQUEIDENTIFIER NOT NULL,
+        [CleaningId]       UNIQUEIDENTIFIER NOT NULL,
+        [FileRelocationId] UNIQUEIDENTIFIER NOT NULL,
+        [OriginalPath]     NVARCHAR(1024)   NOT NULL,
+        [Status]           INT              NOT NULL,
+        [ErrorMessage]     NVARCHAR(2000)   NULL,
+        [VerifiedAtUtc]    DATETIME2(7)     NULL,
+        [PromotedAtUtc]    DATETIME2(7)     NULL,
+        [CreatedAtUtc]     DATETIME2(7)     NOT NULL,
+        CONSTRAINT [PK_cleaning_PromotionRecord] PRIMARY KEY CLUSTERED ([Id]) ON [FG_Data],
+        CONSTRAINT [FK_cleaning_PromotionRecord_Cleaning]
+            FOREIGN KEY ([CleaningId]) REFERENCES [cleaning].[Cleaning]([Id]) ON DELETE CASCADE
+    ) ON [FG_Data];
+    PRINT 'Table [cleaning].[PromotionRecord] created.';
+END
+ELSE PRINT 'Table [cleaning].[PromotionRecord] already exists.';
+GO
+
+-- ─── archive.RedactedFilePiiKind ─────────────────────────────────────────────
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[archive].[RedactedFilePiiKind]') AND type = 'U')
+BEGIN
+    CREATE TABLE [archive].[RedactedFilePiiKind]
+    (
+        [Id]             UNIQUEIDENTIFIER NOT NULL,
+        [RedactedFileId] UNIQUEIDENTIFIER NOT NULL,
+        [PiiKind]        INT              NOT NULL,
+        [Count]          INT              NOT NULL,
+        [CreatedAtUtc]   DATETIME2(7)     NOT NULL,
+        [ArchivedAtUtc]  DATETIME2(7)     NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT [PK_archive_RedactedFilePiiKind] PRIMARY KEY CLUSTERED ([Id]) ON [FG_Data]
+    ) ON [FG_Data];
+    PRINT 'Table [archive].[RedactedFilePiiKind] created.';
+END
+ELSE PRINT 'Table [archive].[RedactedFilePiiKind] already exists.';
+GO
+
+-- ─── archive.PromotionRecord ─────────────────────────────────────────────────
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[archive].[PromotionRecord]') AND type = 'U')
+BEGIN
+    CREATE TABLE [archive].[PromotionRecord]
+    (
+        [Id]               UNIQUEIDENTIFIER NOT NULL,
+        [CleaningId]       UNIQUEIDENTIFIER NOT NULL,
+        [FileRelocationId] UNIQUEIDENTIFIER NOT NULL,
+        [OriginalPath]     NVARCHAR(1024)   NOT NULL,
+        [Status]           INT              NOT NULL,
+        [ErrorMessage]     NVARCHAR(2000)   NULL,
+        [VerifiedAtUtc]    DATETIME2(7)     NULL,
+        [PromotedAtUtc]    DATETIME2(7)     NULL,
+        [CreatedAtUtc]     DATETIME2(7)     NOT NULL,
+        [ArchivedAtUtc]    DATETIME2(7)     NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT [PK_archive_PromotionRecord] PRIMARY KEY CLUSTERED ([Id]) ON [FG_Data]
+    ) ON [FG_Data];
+    PRINT 'Table [archive].[PromotionRecord] created.';
+END
+ELSE PRINT 'Table [archive].[PromotionRecord] already exists.';
+GO
+
 PRINT '03_CreateTables.sql complete.';
