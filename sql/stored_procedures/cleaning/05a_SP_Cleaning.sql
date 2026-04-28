@@ -236,10 +236,10 @@ BEGIN
         INSERT INTO [archive].[RedactedFile]
             ([Id], [CleaningId], [OriginalFilePath], [OriginalFileName], [Extension],
              [DocumentType], [RedactedContent], [EncryptedPiiJson], [PiiSegmentCount],
-             [ContentHash], [ImageRedactionRegionsJson], [DiscoveredAtUtc], [ArchivedAtUtc])
+             [ContentHash], [ImageRedactionRegionsJson], [SlotMapJson], [DiscoveredAtUtc], [ArchivedAtUtc])
         SELECT [Id], [CleaningId], [OriginalFilePath], [OriginalFileName], [Extension],
                [DocumentType], [RedactedContent], [EncryptedPiiJson], [PiiSegmentCount],
-               [ContentHash], [ImageRedactionRegionsJson], [DiscoveredAtUtc], @stamp
+               [ContentHash], [ImageRedactionRegionsJson], [SlotMapJson], [DiscoveredAtUtc], @stamp
         FROM   [cleaning].[RedactedFile]
         WHERE  [CleaningId] = @Id;
     END;

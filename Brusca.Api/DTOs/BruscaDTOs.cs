@@ -140,4 +140,10 @@ namespace Brusca.Api.DTOs.Response
         string? ErrorMessage,
         DateTime CreatedAtUtc,
         DateTime? CompletedAtUtc);
+
+    public sealed record MissingSlotReportResponse(
+        Guid RedactedFileId,
+        string OriginalFileName,
+        IReadOnlyList<string> MissingSlots,
+        string? FallbackPath);
 }

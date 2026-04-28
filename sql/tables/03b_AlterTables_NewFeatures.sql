@@ -140,4 +140,23 @@ BEGIN
 END
 GO
 
+-- ─── cleaning.RedactedFile.SlotMapJson (Phase 11 — per-file slot mapping) ────
+IF OBJECT_ID(N'[cleaning].[RedactedFile]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.columns
+       WHERE object_id = OBJECT_ID(N'[cleaning].[RedactedFile]') AND name = N'SlotMapJson')
+BEGIN
+    ALTER TABLE [cleaning].[RedactedFile] ADD [SlotMapJson] NVARCHAR(MAX) NULL;
+    PRINT 'Column [cleaning].[RedactedFile].[SlotMapJson] added.';
+END
+GO
+
+IF OBJECT_ID(N'[archive].[RedactedFile]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.columns
+       WHERE object_id = OBJECT_ID(N'[archive].[RedactedFile]') AND name = N'SlotMapJson')
+BEGIN
+    ALTER TABLE [archive].[RedactedFile] ADD [SlotMapJson] NVARCHAR(MAX) NULL;
+    PRINT 'Column [archive].[RedactedFile].[SlotMapJson] added.';
+END
+GO
+
 PRINT '03b_AlterTables_NewFeatures.sql complete.';

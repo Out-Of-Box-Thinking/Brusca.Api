@@ -207,6 +207,40 @@ public sealed class CleaningsController : ControllerBase
             result.Value.Select(MapRelocation).ToList(), null));
     }
 
+    /// <summary>
+    /// Phase 11: ask Claude to map every redacted file's PII segment ordinals
+    /// to the named slots required by the latest structure plan. Must run
+    /// AFTER <c>generate-structure</c> and BEFORE <c>execute-structure</c>.
+    /// </summary>
+    [HttpPost("{id:guid}/map-slots")]
+    [ProducesResponseType<ApiResult<object>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> MapSlots(Guid id, CancellationToken ct)
+    {
+        var result = await _service.MapSlotsAsync(id, ct);
+        if (result.IsFailed)
+            return BadRequest(WrapFail<object>(result.Errors));
+        return Ok(new ApiResult<object>(true, new { mapped = true }, null));
+    }
+
+    /// <summary>
+    /// Phase 11: report any redacted file whose slot map is missing one or
+    /// more <c>RequiredTokenSlots</c>. Empty list ⇒ cleaning is safe to
+    /// execute. Run AFTER <c>map-slots</c>.
+    /// </summary>
+    [HttpGet("{id:guid}/slot-validation")]
+    [ProducesResponseType<ApiResult<IReadOnlyList<MissingSlotReportResponse>>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ValidateSlots(Guid id, CancellationToken ct)
+    {
+        var result = await _service.ValidateSlotsAsync(id, ct);
+        if (result.IsFailed)
+            return BadRequest(WrapFail<IReadOnlyList<MissingSlotReportResponse>>(result.Errors));
+        var payload = result.Value
+            .Select(r => new MissingSlotReportResponse(
+                r.RedactedFileId, r.OriginalFileName, r.MissingSlots, r.FallbackPath))
+            .ToList();
+        return Ok(new ApiResult<IReadOnlyList<MissingSlotReportResponse>>(true, payload, null));
+    }
+
     /// <summary>Get the before/after relocation log for the cleaning.</summary>
     [HttpGet("{id:guid}/relocations")]
     [ProducesResponseType<ApiResult<IReadOnlyList<FileRelocationResponse>>>(StatusCodes.Status200OK)]

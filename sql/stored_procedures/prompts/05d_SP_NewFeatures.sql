@@ -189,6 +189,7 @@ CREATE OR ALTER PROCEDURE [cleaning].[usp_RedactedFile_Insert]
     @PiiSegmentCount           INT           = 0,
     @ContentHash               CHAR(64)      = NULL,
     @ImageRedactionRegionsJson NVARCHAR(MAX) = NULL,
+    @SlotMapJson               NVARCHAR(MAX) = NULL,
     @DiscoveredAtUtc           DATETIME2(7)
 AS
 BEGIN
@@ -198,11 +199,11 @@ BEGIN
     INSERT INTO [cleaning].[RedactedFile]
         ([Id], [CleaningId], [OriginalFilePath], [OriginalFileName], [Extension],
          [DocumentType], [RedactedContent], [EncryptedPiiJson], [PiiSegmentCount],
-         [ContentHash], [ImageRedactionRegionsJson], [DiscoveredAtUtc])
+         [ContentHash], [ImageRedactionRegionsJson], [SlotMapJson], [DiscoveredAtUtc])
     VALUES
         (@Id, @CleaningId, @OriginalFilePath, @OriginalFileName, LOWER(@Extension),
          @DocumentType, @RedactedContent, @EncryptedPiiJson, @PiiSegmentCount,
-         @ContentHash, @ImageRedactionRegionsJson, @DiscoveredAtUtc);
+         @ContentHash, @ImageRedactionRegionsJson, @SlotMapJson, @DiscoveredAtUtc);
 END;
 GO
 
@@ -215,7 +216,7 @@ BEGIN
 
     SELECT [Id], [CleaningId], [OriginalFilePath], [OriginalFileName], [Extension],
            [DocumentType], [RedactedContent], [EncryptedPiiJson], [PiiSegmentCount],
-           [ContentHash], [ImageRedactionRegionsJson], [DiscoveredAtUtc]
+           [ContentHash], [ImageRedactionRegionsJson], [SlotMapJson], [DiscoveredAtUtc]
     FROM   [cleaning].[RedactedFile]
     WHERE  [Id] = @Id;
 END;
@@ -230,7 +231,7 @@ BEGIN
 
     SELECT [Id], [CleaningId], [OriginalFilePath], [OriginalFileName], [Extension],
            [DocumentType], [RedactedContent], [EncryptedPiiJson], [PiiSegmentCount],
-           [ContentHash], [DiscoveredAtUtc]
+           [ContentHash], [ImageRedactionRegionsJson], [SlotMapJson], [DiscoveredAtUtc]
     FROM   [cleaning].[RedactedFile]
     WHERE  [CleaningId] = @CleaningId
     ORDER BY [DiscoveredAtUtc] ASC;
