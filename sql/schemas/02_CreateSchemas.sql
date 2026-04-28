@@ -54,4 +54,12 @@ END
 ELSE PRINT 'Schema [error] already exists.';
 GO
 
+IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = N'archive')
+BEGIN
+    EXEC sp_executesql N'CREATE SCHEMA [archive] AUTHORIZATION [dbo]';
+    PRINT 'Schema [archive] created.';
+END
+ELSE PRINT 'Schema [archive] already exists.';
+GO
+
 PRINT '02_CreateSchemas.sql complete.';

@@ -174,4 +174,143 @@ BEGIN
 END
 GO
 
+-- ─── cleaning.RedactedFile ───────────────────────────────────────────────────
+IF OBJECT_ID(N'[cleaning].[RedactedFile]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_cleaning_RedactedFile_CleaningId'
+       AND object_id = OBJECT_ID(N'[cleaning].[RedactedFile]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_cleaning_RedactedFile_CleaningId]
+        ON [cleaning].[RedactedFile]([CleaningId] ASC)
+        INCLUDE ([DocumentType], [Extension], [PiiSegmentCount])
+        ON [FG_Index];
+    PRINT 'Index IX_cleaning_RedactedFile_CleaningId created.';
+END
+GO
+
+IF OBJECT_ID(N'[cleaning].[RedactedFile]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_cleaning_RedactedFile_DocumentType'
+       AND object_id = OBJECT_ID(N'[cleaning].[RedactedFile]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_cleaning_RedactedFile_DocumentType]
+        ON [cleaning].[RedactedFile]([CleaningId] ASC, [DocumentType] ASC, [Extension] ASC)
+        ON [FG_Index];
+    PRINT 'Index IX_cleaning_RedactedFile_DocumentType created.';
+END
+GO
+
+-- ─── cleaning.StructurePlan ──────────────────────────────────────────────────
+IF OBJECT_ID(N'[cleaning].[StructurePlan]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_cleaning_StructurePlan_CleaningId'
+       AND object_id = OBJECT_ID(N'[cleaning].[StructurePlan]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_cleaning_StructurePlan_CleaningId]
+        ON [cleaning].[StructurePlan]([CleaningId] ASC, [GeneratedAtUtc] DESC)
+        ON [FG_Index];
+    PRINT 'Index IX_cleaning_StructurePlan_CleaningId created.';
+END
+GO
+
+-- ─── cleaning.FileRelocation ─────────────────────────────────────────────────
+IF OBJECT_ID(N'[cleaning].[FileRelocation]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_cleaning_FileRelocation_CleaningId'
+       AND object_id = OBJECT_ID(N'[cleaning].[FileRelocation]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_cleaning_FileRelocation_CleaningId]
+        ON [cleaning].[FileRelocation]([CleaningId] ASC, [CreatedAtUtc] ASC)
+        INCLUDE ([Status], [OperationType])
+        ON [FG_Index];
+    PRINT 'Index IX_cleaning_FileRelocation_CleaningId created.';
+END
+GO
+
+IF OBJECT_ID(N'[cleaning].[FileRelocation]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_cleaning_FileRelocation_RedactedFileId'
+       AND object_id = OBJECT_ID(N'[cleaning].[FileRelocation]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_cleaning_FileRelocation_RedactedFileId]
+        ON [cleaning].[FileRelocation]([RedactedFileId] ASC)
+        WHERE [RedactedFileId] IS NOT NULL
+        ON [FG_Index];
+    PRINT 'Index IX_cleaning_FileRelocation_RedactedFileId created.';
+END
+GO
+
+-- ─── archive.* mirror indexes ────────────────────────────────────────────────
+IF OBJECT_ID(N'[archive].[Cleaning]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_archive_Cleaning_ArchivedAtUtc'
+       AND object_id = OBJECT_ID(N'[archive].[Cleaning]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_archive_Cleaning_ArchivedAtUtc]
+        ON [archive].[Cleaning]([ArchivedAtUtc] DESC)
+        INCLUDE ([RootPath], [Status], [CreatedByUserId])
+        ON [FG_Index];
+    PRINT 'Index IX_archive_Cleaning_ArchivedAtUtc created.';
+END
+GO
+
+IF OBJECT_ID(N'[archive].[Cleaning]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_archive_Cleaning_CreatedByUserId'
+       AND object_id = OBJECT_ID(N'[archive].[Cleaning]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_archive_Cleaning_CreatedByUserId]
+        ON [archive].[Cleaning]([CreatedByUserId] ASC, [ArchivedAtUtc] DESC)
+        ON [FG_Index];
+    PRINT 'Index IX_archive_Cleaning_CreatedByUserId created.';
+END
+GO
+
+IF OBJECT_ID(N'[archive].[CleaningFileExtension]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_archive_CleaningFileExtension_CleaningId'
+       AND object_id = OBJECT_ID(N'[archive].[CleaningFileExtension]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_archive_CleaningFileExtension_CleaningId]
+        ON [archive].[CleaningFileExtension]([CleaningId] ASC) ON [FG_Index];
+END
+GO
+
+IF OBJECT_ID(N'[archive].[PromptStep]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_archive_PromptStep_CleaningId'
+       AND object_id = OBJECT_ID(N'[archive].[PromptStep]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_archive_PromptStep_CleaningId]
+        ON [archive].[PromptStep]([CleaningId] ASC, [StepOrder] ASC) ON [FG_Index];
+END
+GO
+
+IF OBJECT_ID(N'[archive].[PromptStepCommand]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_archive_PromptStepCommand_StepId'
+       AND object_id = OBJECT_ID(N'[archive].[PromptStepCommand]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_archive_PromptStepCommand_StepId]
+        ON [archive].[PromptStepCommand]([PromptStepId] ASC) ON [FG_Index];
+END
+GO
+
+IF OBJECT_ID(N'[archive].[RedactedFile]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_archive_RedactedFile_CleaningId'
+       AND object_id = OBJECT_ID(N'[archive].[RedactedFile]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_archive_RedactedFile_CleaningId]
+        ON [archive].[RedactedFile]([CleaningId] ASC) ON [FG_Index];
+END
+GO
+
+IF OBJECT_ID(N'[archive].[StructurePlan]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_archive_StructurePlan_CleaningId'
+       AND object_id = OBJECT_ID(N'[archive].[StructurePlan]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_archive_StructurePlan_CleaningId]
+        ON [archive].[StructurePlan]([CleaningId] ASC) ON [FG_Index];
+END
+GO
+
+IF OBJECT_ID(N'[archive].[FileRelocation]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = N'IX_archive_FileRelocation_CleaningId'
+       AND object_id = OBJECT_ID(N'[archive].[FileRelocation]'))
+BEGIN
+    CREATE NONCLUSTERED INDEX [IX_archive_FileRelocation_CleaningId]
+        ON [archive].[FileRelocation]([CleaningId] ASC) ON [FG_Index];
+END
+GO
+
 PRINT '04_CreateIndexes.sql complete.';

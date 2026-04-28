@@ -65,4 +65,36 @@ BEGIN
 END
 GO
 
+-- ─── PII pipeline column patches (apply only if older table shape) ───────────
+
+-- cleaning.FileRelocation.ContentHashAfter (added in PII rollout)
+IF OBJECT_ID(N'[cleaning].[FileRelocation]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.columns
+       WHERE object_id = OBJECT_ID(N'[cleaning].[FileRelocation]') AND name = N'ContentHashAfter')
+BEGIN
+    ALTER TABLE [cleaning].[FileRelocation] ADD [ContentHashAfter] CHAR(64) NULL;
+    PRINT 'Column [cleaning].[FileRelocation].[ContentHashAfter] added.';
+END
+GO
+
+-- archive.FileRelocation.ContentHashAfter
+IF OBJECT_ID(N'[archive].[FileRelocation]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.columns
+       WHERE object_id = OBJECT_ID(N'[archive].[FileRelocation]') AND name = N'ContentHashAfter')
+BEGIN
+    ALTER TABLE [archive].[FileRelocation] ADD [ContentHashAfter] CHAR(64) NULL;
+    PRINT 'Column [archive].[FileRelocation].[ContentHashAfter] added.';
+END
+GO
+
+-- cleaning.RedactedFile.ContentHash (older shape may have lacked it)
+IF OBJECT_ID(N'[cleaning].[RedactedFile]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.columns
+       WHERE object_id = OBJECT_ID(N'[cleaning].[RedactedFile]') AND name = N'ContentHash')
+BEGIN
+    ALTER TABLE [cleaning].[RedactedFile] ADD [ContentHash] CHAR(64) NULL;
+    PRINT 'Column [cleaning].[RedactedFile].[ContentHash] added.';
+END
+GO
+
 PRINT '03b_AlterTables_NewFeatures.sql complete.';

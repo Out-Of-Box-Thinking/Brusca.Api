@@ -122,3 +122,183 @@ END;
 GO
 
 PRINT 'cleaning stored procedures created.';
+GO
+
+-- ─── cleaning.usp_Cleaning_GetActive ─────────────────────────────────────────
+-- Returns the single non-terminal Cleaning, or no rows if none is active.
+-- Terminal statuses (Completed=6, Failed=7, Cancelled=8, Archived=14) are excluded.
+CREATE OR ALTER PROCEDURE [cleaning].[usp_Cleaning_GetActive]
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT TOP (1)
+           [Id], [RootPath], [Status], [CreatedByUserId], [Notes],
+           [CreatedAtUtc], [CompletedAtUtc],
+           [RestartCount], [LastRestartedAtUtc],
+           [ExecutionTarget], [AlternateExecutionPath],
+           [BeforeTreeJson], [AfterTreeJson]
+    FROM   [cleaning].[Cleaning]
+    WHERE  [Status] NOT IN (6, 7, 8, 14)
+    ORDER BY [CreatedAtUtc] DESC;
+END;
+GO
+
+-- ─── cleaning.usp_Cleaning_Archive ───────────────────────────────────────────
+-- Transactionally moves a Cleaning and every dependent row from the working
+-- cleaning.* schema into the archive.* schema, sets Status = 14 (Archived),
+-- stamps ArchivedAtUtc, and deletes the originals in dependency order.
+CREATE OR ALTER PROCEDURE [cleaning].[usp_Cleaning_Archive]
+    @Id            UNIQUEIDENTIFIER,
+    @ArchivedAtUtc DATETIME2(7) = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    DECLARE @stamp DATETIME2(7) = ISNULL(@ArchivedAtUtc, SYSUTCDATETIME());
+
+    BEGIN TRAN;
+
+    -- Stamp the working row to Archived before mirroring so the archive copy
+    -- reflects the terminal state.
+    UPDATE [cleaning].[Cleaning] SET [Status] = 14 WHERE [Id] = @Id;
+
+    -- 1. Mirror the parent row.
+    INSERT INTO [archive].[Cleaning]
+        ([Id], [RootPath], [Status], [CreatedByUserId], [Notes],
+         [CreatedAtUtc], [CompletedAtUtc], [RestartCount], [LastRestartedAtUtc],
+         [ExecutionTarget], [AlternateExecutionPath],
+         [BeforeTreeJson], [AfterTreeJson], [ArchivedAtUtc])
+    SELECT [Id], [RootPath], [Status], [CreatedByUserId], [Notes],
+           [CreatedAtUtc], [CompletedAtUtc], [RestartCount], [LastRestartedAtUtc],
+           [ExecutionTarget], [AlternateExecutionPath],
+           [BeforeTreeJson], [AfterTreeJson], @stamp
+    FROM   [cleaning].[Cleaning]
+    WHERE  [Id] = @Id;
+
+    -- 2. Mirror dependents.
+    INSERT INTO [archive].[CleaningFileExtension]
+        ([Id], [CleaningId], [ExtensionId], [Extension], [FileCount],
+         [Status], [SuggestedNuGetPackage], [DiscoveredAtUtc], [ArchivedAtUtc])
+    SELECT [Id], [CleaningId], [ExtensionId], [Extension], [FileCount],
+           [Status], [SuggestedNuGetPackage], [DiscoveredAtUtc], @stamp
+    FROM   [cleaning].[CleaningFileExtension]
+    WHERE  [CleaningId] = @Id;
+
+    INSERT INTO [archive].[PromptStepCommand]
+        ([Id], [PromptStepId], [Language], [CommandBody], [CommandOrder],
+         [IsExecuted], [ExecutedAtUtc], [ExecutionError], [CreatedAtUtc], [ArchivedAtUtc])
+    SELECT c.[Id], c.[PromptStepId], c.[Language], c.[CommandBody], c.[CommandOrder],
+           c.[IsExecuted], c.[ExecutedAtUtc], c.[ExecutionError], c.[CreatedAtUtc], @stamp
+    FROM   [prompts].[PromptStepCommand] c
+    JOIN   [prompts].[PromptStep]        s ON s.[Id] = c.[PromptStepId]
+    WHERE  s.[CleaningId] = @Id;
+
+    INSERT INTO [archive].[PromptStep]
+        ([Id], [CleaningId], [StepOrder], [StepType], [PromptText],
+         [GeneratedResponse], [SourcePath], [ProposedTargetPath],
+         [IsApproved], [IsExecuted], [CreatedAtUtc], [ExecutedAtUtc],
+         [ExecutionError], [ArchivedAtUtc])
+    SELECT [Id], [CleaningId], [StepOrder], [StepType], [PromptText],
+           [GeneratedResponse], [SourcePath], [ProposedTargetPath],
+           [IsApproved], [IsExecuted], [CreatedAtUtc], [ExecutedAtUtc],
+           [ExecutionError], @stamp
+    FROM   [prompts].[PromptStep]
+    WHERE  [CleaningId] = @Id;
+
+    IF OBJECT_ID(N'[cleaning].[FileRelocation]', N'U') IS NOT NULL
+    BEGIN
+        INSERT INTO [archive].[FileRelocation]
+            ([Id], [CleaningId], [RedactedFileId], [OperationType], [ExecutionTarget],
+             [BeforePath], [BeforeName], [AfterPath], [AfterName], [Status],
+             [ErrorMessage], [CreatedAtUtc], [CompletedAtUtc], [ContentHashAfter], [ArchivedAtUtc])
+        SELECT [Id], [CleaningId], [RedactedFileId], [OperationType], [ExecutionTarget],
+               [BeforePath], [BeforeName], [AfterPath], [AfterName], [Status],
+               [ErrorMessage], [CreatedAtUtc], [CompletedAtUtc], [ContentHashAfter], @stamp
+        FROM   [cleaning].[FileRelocation]
+        WHERE  [CleaningId] = @Id;
+    END;
+
+    IF OBJECT_ID(N'[cleaning].[StructurePlan]', N'U') IS NOT NULL
+    BEGIN
+        INSERT INTO [archive].[StructurePlan]
+            ([Id], [CleaningId], [Summary], [RulesJson], [RawPlanJson],
+             [GeneratedAtUtc], [ArchivedAtUtc])
+        SELECT [Id], [CleaningId], [Summary], [RulesJson], [RawPlanJson],
+               [GeneratedAtUtc], @stamp
+        FROM   [cleaning].[StructurePlan]
+        WHERE  [CleaningId] = @Id;
+    END;
+
+    IF OBJECT_ID(N'[cleaning].[RedactedFile]', N'U') IS NOT NULL
+    BEGIN
+        INSERT INTO [archive].[RedactedFile]
+            ([Id], [CleaningId], [OriginalFilePath], [OriginalFileName], [Extension],
+             [DocumentType], [RedactedContent], [EncryptedPiiJson], [PiiSegmentCount],
+             [ContentHash], [DiscoveredAtUtc], [ArchivedAtUtc])
+        SELECT [Id], [CleaningId], [OriginalFilePath], [OriginalFileName], [Extension],
+               [DocumentType], [RedactedContent], [EncryptedPiiJson], [PiiSegmentCount],
+               [ContentHash], [DiscoveredAtUtc], @stamp
+        FROM   [cleaning].[RedactedFile]
+        WHERE  [CleaningId] = @Id;
+    END;
+
+    -- 3. Delete from working tables in dependency order.
+    IF OBJECT_ID(N'[cleaning].[FileRelocation]', N'U') IS NOT NULL
+        DELETE FROM [cleaning].[FileRelocation] WHERE [CleaningId] = @Id;
+
+    IF OBJECT_ID(N'[cleaning].[StructurePlan]', N'U') IS NOT NULL
+        DELETE FROM [cleaning].[StructurePlan] WHERE [CleaningId] = @Id;
+
+    IF OBJECT_ID(N'[cleaning].[RedactedFile]', N'U') IS NOT NULL
+        DELETE FROM [cleaning].[RedactedFile] WHERE [CleaningId] = @Id;
+
+    -- PromptStepCommand cascades via FK on PromptStep delete.
+    DELETE FROM [prompts].[PromptStep] WHERE [CleaningId] = @Id;
+
+    DELETE FROM [cleaning].[CleaningFileExtension] WHERE [CleaningId] = @Id;
+    DELETE FROM [cleaning].[Cleaning]              WHERE [Id]         = @Id;
+
+    COMMIT TRAN;
+END;
+GO
+
+-- ─── archive.usp_Cleaning_GetById ────────────────────────────────────────────
+CREATE OR ALTER PROCEDURE [archive].[usp_Cleaning_GetById]
+    @Id UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT [Id], [RootPath], [Status], [CreatedByUserId], [Notes],
+           [CreatedAtUtc], [CompletedAtUtc],
+           [RestartCount], [LastRestartedAtUtc],
+           [ExecutionTarget], [AlternateExecutionPath],
+           [BeforeTreeJson], [AfterTreeJson], [ArchivedAtUtc]
+    FROM   [archive].[Cleaning]
+    WHERE  [Id] = @Id;
+END;
+GO
+
+-- ─── archive.usp_Cleaning_GetPaged ───────────────────────────────────────────
+CREATE OR ALTER PROCEDURE [archive].[usp_Cleaning_GetPaged]
+    @Page     INT = 1,
+    @PageSize INT = 20
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT [Id], [RootPath], [Status], [CreatedByUserId], [Notes],
+           [CreatedAtUtc], [CompletedAtUtc],
+           [RestartCount], [LastRestartedAtUtc],
+           [ExecutionTarget], [AlternateExecutionPath],
+           [BeforeTreeJson], [AfterTreeJson], [ArchivedAtUtc]
+    FROM   [archive].[Cleaning]
+    ORDER BY [ArchivedAtUtc] DESC
+    OFFSET  (@Page - 1) * @PageSize ROWS
+    FETCH NEXT @PageSize ROWS ONLY;
+END;
+GO
+
+PRINT 'archive stored procedures created.';

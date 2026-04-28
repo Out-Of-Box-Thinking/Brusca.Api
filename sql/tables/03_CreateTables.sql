@@ -262,4 +262,253 @@ END
 ELSE PRINT 'Table [error].[Log] already exists.';
 GO
 
+-- =============================================================================
+-- PII pipeline tables (cleaning schema)
+-- =============================================================================
+
+-- ─── cleaning.RedactedFile ───────────────────────────────────────────────────
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[cleaning].[RedactedFile]') AND type = 'U')
+BEGIN
+    CREATE TABLE [cleaning].[RedactedFile]
+    (
+        [Id]               UNIQUEIDENTIFIER NOT NULL DEFAULT NEWSEQUENTIALID(),
+        [CleaningId]       UNIQUEIDENTIFIER NOT NULL,
+        [OriginalFilePath] NVARCHAR(1024)   NOT NULL,
+        [OriginalFileName] NVARCHAR(512)    NOT NULL,
+        [Extension]        NVARCHAR(32)     NOT NULL,
+        [DocumentType]     INT              NOT NULL,
+        [RedactedContent]  NVARCHAR(MAX)    NULL,
+        [EncryptedPiiJson] NVARCHAR(MAX)    NULL,
+        [PiiSegmentCount]  INT              NOT NULL DEFAULT 0,
+        [ContentHash]      CHAR(64)         NULL,
+        [DiscoveredAtUtc]  DATETIME2(7)     NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT [PK_cleaning_RedactedFile] PRIMARY KEY CLUSTERED ([Id]) ON [FG_Data],
+        CONSTRAINT [FK_cleaning_RedactedFile_Cleaning]
+            FOREIGN KEY ([CleaningId]) REFERENCES [cleaning].[Cleaning]([Id])
+    ) ON [FG_Data];
+    PRINT 'Table [cleaning].[RedactedFile] created.';
+END
+ELSE PRINT 'Table [cleaning].[RedactedFile] already exists.';
+GO
+
+-- ─── cleaning.StructurePlan ──────────────────────────────────────────────────
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[cleaning].[StructurePlan]') AND type = 'U')
+BEGIN
+    CREATE TABLE [cleaning].[StructurePlan]
+    (
+        [Id]             UNIQUEIDENTIFIER NOT NULL DEFAULT NEWSEQUENTIALID(),
+        [CleaningId]     UNIQUEIDENTIFIER NOT NULL,
+        [Summary]        NVARCHAR(2000)   NULL,
+        [RulesJson]      NVARCHAR(MAX)    NOT NULL,
+        [RawPlanJson]    NVARCHAR(MAX)    NULL,
+        [GeneratedAtUtc] DATETIME2(7)     NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT [PK_cleaning_StructurePlan] PRIMARY KEY CLUSTERED ([Id]) ON [FG_Data],
+        CONSTRAINT [FK_cleaning_StructurePlan_Cleaning]
+            FOREIGN KEY ([CleaningId]) REFERENCES [cleaning].[Cleaning]([Id])
+    ) ON [FG_Data];
+    PRINT 'Table [cleaning].[StructurePlan] created.';
+END
+ELSE PRINT 'Table [cleaning].[StructurePlan] already exists.';
+GO
+
+-- ─── cleaning.FileRelocation ─────────────────────────────────────────────────
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[cleaning].[FileRelocation]') AND type = 'U')
+BEGIN
+    CREATE TABLE [cleaning].[FileRelocation]
+    (
+        [Id]               UNIQUEIDENTIFIER NOT NULL DEFAULT NEWSEQUENTIALID(),
+        [CleaningId]       UNIQUEIDENTIFIER NOT NULL,
+        [RedactedFileId]   UNIQUEIDENTIFIER NULL,
+        [OperationType]    INT              NOT NULL,
+        [ExecutionTarget]  INT              NOT NULL,
+        [BeforePath]       NVARCHAR(1024)   NULL,
+        [BeforeName]       NVARCHAR(512)    NULL,
+        [AfterPath]        NVARCHAR(1024)   NULL,
+        [AfterName]        NVARCHAR(512)    NULL,
+        [Status]           INT              NOT NULL DEFAULT 0,
+        [ErrorMessage]     NVARCHAR(2000)   NULL,
+        [CreatedAtUtc]     DATETIME2(7)     NOT NULL DEFAULT SYSUTCDATETIME(),
+        [CompletedAtUtc]   DATETIME2(7)     NULL,
+        [ContentHashAfter] CHAR(64)         NULL,
+        CONSTRAINT [PK_cleaning_FileRelocation] PRIMARY KEY CLUSTERED ([Id]) ON [FG_Data],
+        CONSTRAINT [FK_cleaning_FileRelocation_Cleaning]
+            FOREIGN KEY ([CleaningId]) REFERENCES [cleaning].[Cleaning]([Id]),
+        CONSTRAINT [FK_cleaning_FileRelocation_RedactedFile]
+            FOREIGN KEY ([RedactedFileId]) REFERENCES [cleaning].[RedactedFile]([Id])
+    ) ON [FG_Data];
+    PRINT 'Table [cleaning].[FileRelocation] created.';
+END
+ELSE PRINT 'Table [cleaning].[FileRelocation] already exists.';
+GO
+
+-- =============================================================================
+-- archive schema — 1:1 mirrors of working tables, plus ArchivedAtUtc.
+-- Populated transactionally by cleaning.usp_Cleaning_Archive.
+-- =============================================================================
+
+-- ─── archive.Cleaning ────────────────────────────────────────────────────────
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[archive].[Cleaning]') AND type = 'U')
+BEGIN
+    CREATE TABLE [archive].[Cleaning]
+    (
+        [Id]                     UNIQUEIDENTIFIER NOT NULL,
+        [RootPath]               NVARCHAR(1024)   NOT NULL,
+        [Status]                 TINYINT          NOT NULL,
+        [CreatedByUserId]        NVARCHAR(256)    NOT NULL,
+        [Notes]                  NVARCHAR(2000)   NULL,
+        [CreatedAtUtc]           DATETIME2(7)     NOT NULL,
+        [CompletedAtUtc]         DATETIME2(7)     NULL,
+        [RestartCount]           INT              NOT NULL DEFAULT 0,
+        [LastRestartedAtUtc]     DATETIME2(7)     NULL,
+        [ExecutionTarget]        TINYINT          NOT NULL DEFAULT 0,
+        [AlternateExecutionPath] NVARCHAR(1024)   NULL,
+        [BeforeTreeJson]         NVARCHAR(MAX)    NULL,
+        [AfterTreeJson]          NVARCHAR(MAX)    NULL,
+        [ArchivedAtUtc]          DATETIME2(7)     NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT [PK_archive_Cleaning] PRIMARY KEY CLUSTERED ([Id]) ON [FG_Data]
+    ) ON [FG_Data];
+    PRINT 'Table [archive].[Cleaning] created.';
+END
+ELSE PRINT 'Table [archive].[Cleaning] already exists.';
+GO
+
+-- ─── archive.CleaningFileExtension ───────────────────────────────────────────
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[archive].[CleaningFileExtension]') AND type = 'U')
+BEGIN
+    CREATE TABLE [archive].[CleaningFileExtension]
+    (
+        [Id]                    UNIQUEIDENTIFIER NOT NULL,
+        [CleaningId]            UNIQUEIDENTIFIER NOT NULL,
+        [ExtensionId]           UNIQUEIDENTIFIER NOT NULL,
+        [Extension]             NVARCHAR(50)     NOT NULL,
+        [FileCount]             INT              NOT NULL,
+        [Status]                TINYINT          NOT NULL,
+        [SuggestedNuGetPackage] NVARCHAR(512)    NULL,
+        [DiscoveredAtUtc]       DATETIME2(7)     NOT NULL,
+        [ArchivedAtUtc]         DATETIME2(7)     NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT [PK_archive_CleaningFileExtension] PRIMARY KEY CLUSTERED ([Id]) ON [FG_Data]
+    ) ON [FG_Data];
+    PRINT 'Table [archive].[CleaningFileExtension] created.';
+END
+ELSE PRINT 'Table [archive].[CleaningFileExtension] already exists.';
+GO
+
+-- ─── archive.PromptStep ──────────────────────────────────────────────────────
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[archive].[PromptStep]') AND type = 'U')
+BEGIN
+    CREATE TABLE [archive].[PromptStep]
+    (
+        [Id]                  UNIQUEIDENTIFIER NOT NULL,
+        [CleaningId]          UNIQUEIDENTIFIER NOT NULL,
+        [StepOrder]           INT              NOT NULL,
+        [StepType]            TINYINT          NOT NULL,
+        [PromptText]          NVARCHAR(MAX)    NOT NULL,
+        [GeneratedResponse]   NVARCHAR(MAX)    NULL,
+        [SourcePath]          NVARCHAR(1024)   NULL,
+        [ProposedTargetPath]  NVARCHAR(1024)   NULL,
+        [IsApproved]          BIT              NOT NULL,
+        [IsExecuted]          BIT              NOT NULL,
+        [CreatedAtUtc]        DATETIME2(7)     NOT NULL,
+        [ExecutedAtUtc]       DATETIME2(7)     NULL,
+        [ExecutionError]      NVARCHAR(2000)   NULL,
+        [ArchivedAtUtc]       DATETIME2(7)     NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT [PK_archive_PromptStep] PRIMARY KEY CLUSTERED ([Id]) ON [FG_Data]
+    ) ON [FG_Data];
+    PRINT 'Table [archive].[PromptStep] created.';
+END
+ELSE PRINT 'Table [archive].[PromptStep] already exists.';
+GO
+
+-- ─── archive.PromptStepCommand ───────────────────────────────────────────────
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[archive].[PromptStepCommand]') AND type = 'U')
+BEGIN
+    CREATE TABLE [archive].[PromptStepCommand]
+    (
+        [Id]             UNIQUEIDENTIFIER NOT NULL,
+        [PromptStepId]   UNIQUEIDENTIFIER NOT NULL,
+        [Language]       TINYINT          NOT NULL,
+        [CommandBody]    NVARCHAR(MAX)    NOT NULL,
+        [CommandOrder]   INT              NOT NULL,
+        [IsExecuted]     BIT              NOT NULL,
+        [ExecutedAtUtc]  DATETIME2(7)     NULL,
+        [ExecutionError] NVARCHAR(2000)   NULL,
+        [CreatedAtUtc]   DATETIME2(7)     NOT NULL,
+        [ArchivedAtUtc]  DATETIME2(7)     NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT [PK_archive_PromptStepCommand] PRIMARY KEY CLUSTERED ([Id]) ON [FG_Data]
+    ) ON [FG_Data];
+    PRINT 'Table [archive].[PromptStepCommand] created.';
+END
+ELSE PRINT 'Table [archive].[PromptStepCommand] already exists.';
+GO
+
+-- ─── archive.RedactedFile ────────────────────────────────────────────────────
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[archive].[RedactedFile]') AND type = 'U')
+BEGIN
+    CREATE TABLE [archive].[RedactedFile]
+    (
+        [Id]               UNIQUEIDENTIFIER NOT NULL,
+        [CleaningId]       UNIQUEIDENTIFIER NOT NULL,
+        [OriginalFilePath] NVARCHAR(1024)   NOT NULL,
+        [OriginalFileName] NVARCHAR(512)    NOT NULL,
+        [Extension]        NVARCHAR(32)     NOT NULL,
+        [DocumentType]     INT              NOT NULL,
+        [RedactedContent]  NVARCHAR(MAX)    NULL,
+        [EncryptedPiiJson] NVARCHAR(MAX)    NULL,
+        [PiiSegmentCount]  INT              NOT NULL,
+        [ContentHash]      CHAR(64)         NULL,
+        [DiscoveredAtUtc]  DATETIME2(7)     NOT NULL,
+        [ArchivedAtUtc]    DATETIME2(7)     NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT [PK_archive_RedactedFile] PRIMARY KEY CLUSTERED ([Id]) ON [FG_Data]
+    ) ON [FG_Data];
+    PRINT 'Table [archive].[RedactedFile] created.';
+END
+ELSE PRINT 'Table [archive].[RedactedFile] already exists.';
+GO
+
+-- ─── archive.StructurePlan ───────────────────────────────────────────────────
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[archive].[StructurePlan]') AND type = 'U')
+BEGIN
+    CREATE TABLE [archive].[StructurePlan]
+    (
+        [Id]             UNIQUEIDENTIFIER NOT NULL,
+        [CleaningId]     UNIQUEIDENTIFIER NOT NULL,
+        [Summary]        NVARCHAR(2000)   NULL,
+        [RulesJson]      NVARCHAR(MAX)    NOT NULL,
+        [RawPlanJson]    NVARCHAR(MAX)    NULL,
+        [GeneratedAtUtc] DATETIME2(7)     NOT NULL,
+        [ArchivedAtUtc]  DATETIME2(7)     NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT [PK_archive_StructurePlan] PRIMARY KEY CLUSTERED ([Id]) ON [FG_Data]
+    ) ON [FG_Data];
+    PRINT 'Table [archive].[StructurePlan] created.';
+END
+ELSE PRINT 'Table [archive].[StructurePlan] already exists.';
+GO
+
+-- ─── archive.FileRelocation ──────────────────────────────────────────────────
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[archive].[FileRelocation]') AND type = 'U')
+BEGIN
+    CREATE TABLE [archive].[FileRelocation]
+    (
+        [Id]               UNIQUEIDENTIFIER NOT NULL,
+        [CleaningId]       UNIQUEIDENTIFIER NOT NULL,
+        [RedactedFileId]   UNIQUEIDENTIFIER NULL,
+        [OperationType]    INT              NOT NULL,
+        [ExecutionTarget]  INT              NOT NULL,
+        [BeforePath]       NVARCHAR(1024)   NULL,
+        [BeforeName]       NVARCHAR(512)    NULL,
+        [AfterPath]        NVARCHAR(1024)   NULL,
+        [AfterName]        NVARCHAR(512)    NULL,
+        [Status]           INT              NOT NULL,
+        [ErrorMessage]     NVARCHAR(2000)   NULL,
+        [CreatedAtUtc]     DATETIME2(7)     NOT NULL,
+        [CompletedAtUtc]   DATETIME2(7)     NULL,
+        [ContentHashAfter] CHAR(64)         NULL,
+        [ArchivedAtUtc]    DATETIME2(7)     NOT NULL DEFAULT SYSUTCDATETIME(),
+        CONSTRAINT [PK_archive_FileRelocation] PRIMARY KEY CLUSTERED ([Id]) ON [FG_Data]
+    ) ON [FG_Data];
+    PRINT 'Table [archive].[FileRelocation] created.';
+END
+ELSE PRINT 'Table [archive].[FileRelocation] already exists.';
+GO
+
 PRINT '03_CreateTables.sql complete.';

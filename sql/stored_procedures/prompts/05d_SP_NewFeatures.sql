@@ -170,3 +170,213 @@ END;
 GO
 
 PRINT '05d_SP_Cleaning_NewFeatures.sql applied.';
+GO
+
+-- =============================================================================
+-- PII PIPELINE — RedactedFile / StructurePlan / FileRelocation
+-- =============================================================================
+
+-- ─── cleaning.usp_RedactedFile_Insert ────────────────────────────────────────
+CREATE OR ALTER PROCEDURE [cleaning].[usp_RedactedFile_Insert]
+    @Id               UNIQUEIDENTIFIER,
+    @CleaningId       UNIQUEIDENTIFIER,
+    @OriginalFilePath NVARCHAR(1024),
+    @OriginalFileName NVARCHAR(512),
+    @Extension        NVARCHAR(32),
+    @DocumentType     INT,
+    @RedactedContent  NVARCHAR(MAX) = NULL,
+    @EncryptedPiiJson NVARCHAR(MAX) = NULL,
+    @PiiSegmentCount  INT           = 0,
+    @ContentHash      CHAR(64)      = NULL,
+    @DiscoveredAtUtc  DATETIME2(7)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    INSERT INTO [cleaning].[RedactedFile]
+        ([Id], [CleaningId], [OriginalFilePath], [OriginalFileName], [Extension],
+         [DocumentType], [RedactedContent], [EncryptedPiiJson], [PiiSegmentCount],
+         [ContentHash], [DiscoveredAtUtc])
+    VALUES
+        (@Id, @CleaningId, @OriginalFilePath, @OriginalFileName, LOWER(@Extension),
+         @DocumentType, @RedactedContent, @EncryptedPiiJson, @PiiSegmentCount,
+         @ContentHash, @DiscoveredAtUtc);
+END;
+GO
+
+-- ─── cleaning.usp_RedactedFile_GetById ───────────────────────────────────────
+CREATE OR ALTER PROCEDURE [cleaning].[usp_RedactedFile_GetById]
+    @Id UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT [Id], [CleaningId], [OriginalFilePath], [OriginalFileName], [Extension],
+           [DocumentType], [RedactedContent], [EncryptedPiiJson], [PiiSegmentCount],
+           [ContentHash], [DiscoveredAtUtc]
+    FROM   [cleaning].[RedactedFile]
+    WHERE  [Id] = @Id;
+END;
+GO
+
+-- ─── cleaning.usp_RedactedFile_GetByCleaningId ───────────────────────────────
+CREATE OR ALTER PROCEDURE [cleaning].[usp_RedactedFile_GetByCleaningId]
+    @CleaningId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT [Id], [CleaningId], [OriginalFilePath], [OriginalFileName], [Extension],
+           [DocumentType], [RedactedContent], [EncryptedPiiJson], [PiiSegmentCount],
+           [ContentHash], [DiscoveredAtUtc]
+    FROM   [cleaning].[RedactedFile]
+    WHERE  [CleaningId] = @CleaningId
+    ORDER BY [DiscoveredAtUtc] ASC;
+END;
+GO
+
+-- ─── cleaning.usp_RedactedFile_GetDocumentTypeSummaries ──────────────────────
+-- Anonymized aggregate fed to Claude — DocumentType + Extension + Count only.
+CREATE OR ALTER PROCEDURE [cleaning].[usp_RedactedFile_GetDocumentTypeSummaries]
+    @CleaningId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT [DocumentType], [Extension], COUNT_BIG(*) AS [Count]
+    FROM   [cleaning].[RedactedFile]
+    WHERE  [CleaningId] = @CleaningId
+    GROUP BY [DocumentType], [Extension]
+    ORDER BY [DocumentType], [Extension];
+END;
+GO
+
+-- ─── cleaning.usp_RedactedFile_DeleteByCleaningId ────────────────────────────
+CREATE OR ALTER PROCEDURE [cleaning].[usp_RedactedFile_DeleteByCleaningId]
+    @CleaningId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    DELETE FROM [cleaning].[RedactedFile] WHERE [CleaningId] = @CleaningId;
+END;
+GO
+
+-- ─── cleaning.usp_StructurePlan_Insert ───────────────────────────────────────
+CREATE OR ALTER PROCEDURE [cleaning].[usp_StructurePlan_Insert]
+    @Id             UNIQUEIDENTIFIER,
+    @CleaningId     UNIQUEIDENTIFIER,
+    @Summary        NVARCHAR(2000) = NULL,
+    @RulesJson      NVARCHAR(MAX),
+    @RawPlanJson    NVARCHAR(MAX)  = NULL,
+    @GeneratedAtUtc DATETIME2(7)
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    INSERT INTO [cleaning].[StructurePlan]
+        ([Id], [CleaningId], [Summary], [RulesJson], [RawPlanJson], [GeneratedAtUtc])
+    VALUES
+        (@Id, @CleaningId, @Summary, @RulesJson, @RawPlanJson, @GeneratedAtUtc);
+END;
+GO
+
+-- ─── cleaning.usp_StructurePlan_GetLatest ────────────────────────────────────
+CREATE OR ALTER PROCEDURE [cleaning].[usp_StructurePlan_GetLatest]
+    @CleaningId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT TOP (1)
+           [Id], [CleaningId], [Summary], [RulesJson], [RawPlanJson], [GeneratedAtUtc]
+    FROM   [cleaning].[StructurePlan]
+    WHERE  [CleaningId] = @CleaningId
+    ORDER BY [GeneratedAtUtc] DESC;
+END;
+GO
+
+-- ─── cleaning.usp_StructurePlan_DeleteByCleaningId ───────────────────────────
+CREATE OR ALTER PROCEDURE [cleaning].[usp_StructurePlan_DeleteByCleaningId]
+    @CleaningId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    DELETE FROM [cleaning].[StructurePlan] WHERE [CleaningId] = @CleaningId;
+END;
+GO
+
+-- ─── cleaning.usp_FileRelocation_Insert ──────────────────────────────────────
+-- Includes @ContentHashAfter for post-move SHA-256 integrity verification.
+CREATE OR ALTER PROCEDURE [cleaning].[usp_FileRelocation_Insert]
+    @Id               UNIQUEIDENTIFIER,
+    @CleaningId       UNIQUEIDENTIFIER,
+    @RedactedFileId   UNIQUEIDENTIFIER = NULL,
+    @OperationType    INT,
+    @ExecutionTarget  INT,
+    @BeforePath       NVARCHAR(1024)  = NULL,
+    @BeforeName       NVARCHAR(512)   = NULL,
+    @AfterPath        NVARCHAR(1024)  = NULL,
+    @AfterName        NVARCHAR(512)   = NULL,
+    @Status           INT,
+    @ErrorMessage     NVARCHAR(2000)  = NULL,
+    @CreatedAtUtc     DATETIME2(7),
+    @CompletedAtUtc   DATETIME2(7)    = NULL,
+    @ContentHashAfter CHAR(64)        = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    INSERT INTO [cleaning].[FileRelocation]
+        ([Id], [CleaningId], [RedactedFileId], [OperationType], [ExecutionTarget],
+         [BeforePath], [BeforeName], [AfterPath], [AfterName],
+         [Status], [ErrorMessage], [CreatedAtUtc], [CompletedAtUtc], [ContentHashAfter])
+    VALUES
+        (@Id, @CleaningId, @RedactedFileId, @OperationType, @ExecutionTarget,
+         @BeforePath, @BeforeName, @AfterPath, @AfterName,
+         @Status, @ErrorMessage, @CreatedAtUtc, @CompletedAtUtc, @ContentHashAfter);
+END;
+GO
+
+-- ─── cleaning.usp_FileRelocation_UpdateStatus ────────────────────────────────
+CREATE OR ALTER PROCEDURE [cleaning].[usp_FileRelocation_UpdateStatus]
+    @Id             UNIQUEIDENTIFIER,
+    @Status         INT,
+    @ErrorMessage   NVARCHAR(2000) = NULL,
+    @CompletedAtUtc DATETIME2(7)   = NULL
+AS
+BEGIN
+    SET NOCOUNT ON;
+    SET XACT_ABORT ON;
+
+    UPDATE [cleaning].[FileRelocation]
+    SET    [Status]         = @Status,
+           [ErrorMessage]   = @ErrorMessage,
+           [CompletedAtUtc] = ISNULL(@CompletedAtUtc, [CompletedAtUtc])
+    WHERE  [Id] = @Id;
+END;
+GO
+
+-- ─── cleaning.usp_FileRelocation_GetByCleaningId ─────────────────────────────
+CREATE OR ALTER PROCEDURE [cleaning].[usp_FileRelocation_GetByCleaningId]
+    @CleaningId UNIQUEIDENTIFIER
+AS
+BEGIN
+    SET NOCOUNT ON;
+
+    SELECT [Id], [CleaningId], [RedactedFileId], [OperationType], [ExecutionTarget],
+           [BeforePath], [BeforeName], [AfterPath], [AfterName],
+           [Status], [ErrorMessage], [CreatedAtUtc], [CompletedAtUtc], [ContentHashAfter]
+    FROM   [cleaning].[FileRelocation]
+    WHERE  [CleaningId] = @CleaningId
+    ORDER BY [CreatedAtUtc] ASC;
+END;
+GO
+
+PRINT 'PII pipeline stored procedures created.';
