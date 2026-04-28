@@ -178,17 +178,18 @@ GO
 
 -- ─── cleaning.usp_RedactedFile_Insert ────────────────────────────────────────
 CREATE OR ALTER PROCEDURE [cleaning].[usp_RedactedFile_Insert]
-    @Id               UNIQUEIDENTIFIER,
-    @CleaningId       UNIQUEIDENTIFIER,
-    @OriginalFilePath NVARCHAR(1024),
-    @OriginalFileName NVARCHAR(512),
-    @Extension        NVARCHAR(32),
-    @DocumentType     INT,
-    @RedactedContent  NVARCHAR(MAX) = NULL,
-    @EncryptedPiiJson NVARCHAR(MAX) = NULL,
-    @PiiSegmentCount  INT           = 0,
-    @ContentHash      CHAR(64)      = NULL,
-    @DiscoveredAtUtc  DATETIME2(7)
+    @Id                        UNIQUEIDENTIFIER,
+    @CleaningId                UNIQUEIDENTIFIER,
+    @OriginalFilePath          NVARCHAR(1024),
+    @OriginalFileName          NVARCHAR(512),
+    @Extension                 NVARCHAR(32),
+    @DocumentType              INT,
+    @RedactedContent           NVARCHAR(MAX) = NULL,
+    @EncryptedPiiJson          NVARCHAR(MAX) = NULL,
+    @PiiSegmentCount           INT           = 0,
+    @ContentHash               CHAR(64)      = NULL,
+    @ImageRedactionRegionsJson NVARCHAR(MAX) = NULL,
+    @DiscoveredAtUtc           DATETIME2(7)
 AS
 BEGIN
     SET NOCOUNT ON;
@@ -197,11 +198,11 @@ BEGIN
     INSERT INTO [cleaning].[RedactedFile]
         ([Id], [CleaningId], [OriginalFilePath], [OriginalFileName], [Extension],
          [DocumentType], [RedactedContent], [EncryptedPiiJson], [PiiSegmentCount],
-         [ContentHash], [DiscoveredAtUtc])
+         [ContentHash], [ImageRedactionRegionsJson], [DiscoveredAtUtc])
     VALUES
         (@Id, @CleaningId, @OriginalFilePath, @OriginalFileName, LOWER(@Extension),
          @DocumentType, @RedactedContent, @EncryptedPiiJson, @PiiSegmentCount,
-         @ContentHash, @DiscoveredAtUtc);
+         @ContentHash, @ImageRedactionRegionsJson, @DiscoveredAtUtc);
 END;
 GO
 
@@ -214,7 +215,7 @@ BEGIN
 
     SELECT [Id], [CleaningId], [OriginalFilePath], [OriginalFileName], [Extension],
            [DocumentType], [RedactedContent], [EncryptedPiiJson], [PiiSegmentCount],
-           [ContentHash], [DiscoveredAtUtc]
+           [ContentHash], [ImageRedactionRegionsJson], [DiscoveredAtUtc]
     FROM   [cleaning].[RedactedFile]
     WHERE  [Id] = @Id;
 END;

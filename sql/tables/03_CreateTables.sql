@@ -281,6 +281,7 @@ BEGIN
         [EncryptedPiiJson] NVARCHAR(MAX)    NULL,
         [PiiSegmentCount]  INT              NOT NULL DEFAULT 0,
         [ContentHash]      CHAR(64)         NULL,
+        [ImageRedactionRegionsJson] NVARCHAR(MAX) NULL,
         [DiscoveredAtUtc]  DATETIME2(7)     NOT NULL DEFAULT SYSUTCDATETIME(),
         CONSTRAINT [PK_cleaning_RedactedFile] PRIMARY KEY CLUSTERED ([Id]) ON [FG_Data],
         CONSTRAINT [FK_cleaning_RedactedFile_Cleaning]
@@ -456,6 +457,7 @@ BEGIN
         [EncryptedPiiJson] NVARCHAR(MAX)    NULL,
         [PiiSegmentCount]  INT              NOT NULL,
         [ContentHash]      CHAR(64)         NULL,
+        [ImageRedactionRegionsJson] NVARCHAR(MAX) NULL,
         [DiscoveredAtUtc]  DATETIME2(7)     NOT NULL,
         [ArchivedAtUtc]    DATETIME2(7)     NOT NULL DEFAULT SYSUTCDATETIME(),
         CONSTRAINT [PK_archive_RedactedFile] PRIMARY KEY CLUSTERED ([Id]) ON [FG_Data]

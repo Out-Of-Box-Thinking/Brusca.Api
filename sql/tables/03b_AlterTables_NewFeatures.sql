@@ -97,4 +97,24 @@ BEGIN
 END
 GO
 
+-- cleaning.RedactedFile.ImageRedactionRegionsJson (Phase 9 — image sanitization)
+IF OBJECT_ID(N'[cleaning].[RedactedFile]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.columns
+       WHERE object_id = OBJECT_ID(N'[cleaning].[RedactedFile]') AND name = N'ImageRedactionRegionsJson')
+BEGIN
+    ALTER TABLE [cleaning].[RedactedFile] ADD [ImageRedactionRegionsJson] NVARCHAR(MAX) NULL;
+    PRINT 'Column [cleaning].[RedactedFile].[ImageRedactionRegionsJson] added.';
+END
+GO
+
+-- archive.RedactedFile.ImageRedactionRegionsJson
+IF OBJECT_ID(N'[archive].[RedactedFile]', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM sys.columns
+       WHERE object_id = OBJECT_ID(N'[archive].[RedactedFile]') AND name = N'ImageRedactionRegionsJson')
+BEGIN
+    ALTER TABLE [archive].[RedactedFile] ADD [ImageRedactionRegionsJson] NVARCHAR(MAX) NULL;
+    PRINT 'Column [archive].[RedactedFile].[ImageRedactionRegionsJson] added.';
+END
+GO
+
 PRINT '03b_AlterTables_NewFeatures.sql complete.';
