@@ -197,3 +197,44 @@ Brusca does not have an undo feature. This is why the alternate path option exis
 
 **Is my file content sent to Claude?**
 A sample of text from up to five files is sent to Anthropic's API to help Claude understand what the files contain and generate better naming suggestions. Only text content is sampled — binary files are skipped. If you have data privacy concerns, discuss with your administrator whether to enable or disable file content sampling.
+
+
+---
+
+## PII redaction & structure planning (NEW)
+
+The cleaning pipeline now includes three additional endpoints that redact PII before
+ever calling Claude and apply a Claude-designed directory layout to the chosen execution target.
+
+### POST /api/cleanings/{id}/redact
+
+Reads every supported file under the root path, strips PII, classifies the document type, and persists a redacted descriptor with an encrypted PII column.
+
+Response: `ApiResult<RedactionSummaryResponse>` containing per-bucket counts grouped by `(documentType, extension)`. **No PII is returned.**
+
+### POST /api/cleanings/{id}/generate-structure
+
+Sends ONLY the bucket counts to Claude, asks it to design a directory layout, and persists the resulting plan.
+
+Response: `ApiResult<StructurePlanResponse>`.
+
+### GET /api/cleanings/{id}/structure-plan
+
+Returns the latest plan for the cleaning.
+
+### POST /api/cleanings/{id}/execute-structure
+
+Applies the plan against the configured execution target. Decrypts the PII column **in memory only** to substitute template tokens, performs the move/rename/create, and records before/after state.
+
+Response: `ApiResult<FileRelocationResponse[]>`.
+
+### GET /api/cleanings/{id}/relocations
+
+Returns the full before/after relocation log for the cleaning. This is the audit-grade record of what changed.
+
+### Privacy guarantees
+
+1. The original PII text only ever lives in memory inside `RegexPiiRedactionService` and `StructureExecutionService.BuildTokenMap`.
+2. At rest, PII is sealed in `cleaning.RedactedFile.EncryptedPiiJson` via ASP.NET Core Data Protection.
+3. Claude is called with anonymized aggregates only \u2014 no file names, no content, no PII.
+4. Every move/rename/create is recorded with a `BeforePath`/`BeforeName` and `AfterPath`/`AfterName` for full traceability whether the execution target is the source path or an alternate path.

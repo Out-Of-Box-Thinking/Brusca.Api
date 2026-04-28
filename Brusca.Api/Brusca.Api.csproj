@@ -12,8 +12,8 @@
 
   <ItemGroup>
     <!-- Core domain and infrastructure — consumed as NuGet packages from the shared local feed during development -->
-    <PackageReference Include="Brusca.Core" Version="1.0.*" />
-    <PackageReference Include="Brusca.Infrastructure" Version="1.0.*" />
+    <PackageReference Include="Brusca.Core" Version="1.0.999-pii" />
+    <PackageReference Include="Brusca.Infrastructure" Version="1.0.999-pii" />
   </ItemGroup>
 
   <ItemGroup>
@@ -23,6 +23,10 @@
     <PackageReference Include="Microsoft.Identity.Web" Version="3.*" />
     <!-- OpenAPI -->
     <PackageReference Include="Scalar.AspNetCore" Version="2.*" />
+    <!-- Built-in OpenAPI in .NET 9 -->
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="9.0.*" />
+    <!-- Serilog request logging extension -->
+    <PackageReference Include="Serilog.AspNetCore" Version="8.*" />
     <!-- Validation -->
     <PackageReference Include="FluentValidation.AspNetCore" Version="11.*" />
     <!-- Mapping -->

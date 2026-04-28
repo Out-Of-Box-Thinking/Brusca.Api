@@ -35,7 +35,7 @@ public sealed class CleaningsController : ControllerBase
     {
         var result = await _service.StartCleaningAsync(request.RootPath, UserId, ct);
         if (result.IsFailed)
-            return BadRequest(Fail<CleaningResponse>(result.Errors));
+            return BadRequest(WrapFail<CleaningResponse>(result.Errors));
         return CreatedAtAction(nameof(GetById), new { id = result.Value.Id },
             Ok(MapToResponse(result.Value)));
     }
@@ -47,7 +47,7 @@ public sealed class CleaningsController : ControllerBase
     {
         var result = await _service.GetCleaningAsync(id, ct);
         if (result.IsFailed) return NotFound();
-        return Ok(Ok(MapToResponse(result.Value)));
+        return Ok(Wrap(MapToResponse(result.Value)));
     }
 
     /// <summary>Scan the path for file extensions.</summary>
@@ -57,7 +57,7 @@ public sealed class CleaningsController : ControllerBase
     {
         var result = await _service.ScanExtensionsAsync(id, ct);
         if (result.IsFailed)
-            return BadRequest(Fail<ExtensionScanResponse>(result.Errors));
+            return BadRequest(WrapFail<ExtensionScanResponse>(result.Errors));
 
         return Ok(new ApiResult<ExtensionScanResponse>(true,
             new ExtensionScanResponse(
@@ -74,7 +74,7 @@ public sealed class CleaningsController : ControllerBase
     {
         var result = await _service.GeneratePromptStepsAsync(id, ct);
         if (result.IsFailed)
-            return BadRequest(Fail<object>(result.Errors));
+            return BadRequest(WrapFail<object>(result.Errors));
         return NoContent();
     }
 
@@ -91,16 +91,16 @@ public sealed class CleaningsController : ControllerBase
         CancellationToken ct)
     {
         if (!Enum.TryParse<ExecutionTarget>(request.Target, out var target))
-            return BadRequest(Fail<object>(["Invalid ExecutionTarget value."]));
+            return BadRequest(WrapFail<object>(["Invalid ExecutionTarget value."]));
 
         if (target == ExecutionTarget.AlternatePath &&
             string.IsNullOrWhiteSpace(request.AlternatePath))
-            return BadRequest(Fail<object>(["AlternatePath is required when Target is AlternatePath."]));
+            return BadRequest(WrapFail<object>(["AlternatePath is required when Target is AlternatePath."]));
 
         var result = await _service.SetExecutionTargetAsync(
             id, target, request.AlternatePath, UserId, ct);
         if (result.IsFailed)
-            return BadRequest(Fail<object>(result.Errors));
+            return BadRequest(WrapFail<object>(result.Errors));
         return NoContent();
     }
 
@@ -111,7 +111,7 @@ public sealed class CleaningsController : ControllerBase
     {
         var result = await _service.ExecuteApprovedStepsAsync(id, ct);
         if (result.IsFailed)
-            return BadRequest(Fail<object>(result.Errors));
+            return BadRequest(WrapFail<object>(result.Errors));
         return NoContent();
     }
 
@@ -126,7 +126,7 @@ public sealed class CleaningsController : ControllerBase
     {
         var result = await _service.RestartCleaningAsync(id, UserId, ct);
         if (result.IsFailed)
-            return BadRequest(Fail<object>(result.Errors));
+            return BadRequest(WrapFail<object>(result.Errors));
         return NoContent();
     }
 
@@ -152,12 +152,90 @@ public sealed class CleaningsController : ControllerBase
                 result.Value.IsAfterProjected), null));
     }
 
+    // ── PII redaction + structure-plan flow ──────────────────────────────────
+
+    /// <summary>Read every supported file, strip PII, classify document type,
+    /// and persist a redacted descriptor + encrypted PII column.</summary>
+    [HttpPost("{id:guid}/redact")]
+    [ProducesResponseType<ApiResult<RedactionSummaryResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> RedactAndClassify(Guid id, CancellationToken ct)
+    {
+        var result = await _service.RedactAndClassifyAsync(id, ct);
+        if (result.IsFailed)
+            return BadRequest(WrapFail<RedactionSummaryResponse>(result.Errors));
+
+        var buckets = result.Value
+            .GroupBy(d => new { d.DocumentType, d.Extension })
+            .Select(g => new DocumentTypeBucketResponse(
+                g.Key.DocumentType.ToString(), g.Key.Extension, g.Count()))
+            .ToList();
+
+        return Ok(new ApiResult<RedactionSummaryResponse>(true,
+            new RedactionSummaryResponse(id, result.Value.Count, buckets), null));
+    }
+
+    /// <summary>Ask Claude to design a directory layout from anonymized data only.</summary>
+    [HttpPost("{id:guid}/generate-structure")]
+    [ProducesResponseType<ApiResult<StructurePlanResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GenerateStructure(Guid id, CancellationToken ct)
+    {
+        var result = await _service.GenerateStructurePlanAsync(id, ct);
+        if (result.IsFailed)
+            return BadRequest(WrapFail<StructurePlanResponse>(result.Errors));
+        return Ok(new ApiResult<StructurePlanResponse>(true, MapPlan(result.Value), null));
+    }
+
+    /// <summary>Get the latest persisted structure plan for the cleaning.</summary>
+    [HttpGet("{id:guid}/structure-plan")]
+    [ProducesResponseType<ApiResult<StructurePlanResponse>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetStructurePlan(Guid id, CancellationToken ct)
+    {
+        var result = await _service.GetStructurePlanAsync(id, ct);
+        if (result.IsFailed) return NotFound();
+        return Ok(new ApiResult<StructurePlanResponse>(true, MapPlan(result.Value), null));
+    }
+
+    /// <summary>Apply the structure plan against the configured execution target.</summary>
+    [HttpPost("{id:guid}/execute-structure")]
+    [ProducesResponseType<ApiResult<IReadOnlyList<FileRelocationResponse>>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> ExecuteStructure(Guid id, CancellationToken ct)
+    {
+        var result = await _service.ExecuteStructurePlanAsync(id, ct);
+        if (result.IsFailed)
+            return BadRequest(WrapFail<IReadOnlyList<FileRelocationResponse>>(result.Errors));
+        return Ok(new ApiResult<IReadOnlyList<FileRelocationResponse>>(true,
+            result.Value.Select(MapRelocation).ToList(), null));
+    }
+
+    /// <summary>Get the before/after relocation log for the cleaning.</summary>
+    [HttpGet("{id:guid}/relocations")]
+    [ProducesResponseType<ApiResult<IReadOnlyList<FileRelocationResponse>>>(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetRelocations(Guid id, CancellationToken ct)
+    {
+        var result = await _service.GetRelocationsAsync(id, ct);
+        if (result.IsFailed) return NotFound();
+        return Ok(new ApiResult<IReadOnlyList<FileRelocationResponse>>(true,
+            result.Value.Select(MapRelocation).ToList(), null));
+    }
+
+    private static StructurePlanResponse MapPlan(Brusca.Core.Models.Cleaning.DirectoryStructurePlan p) =>
+        new(p.Id, p.CleaningId, p.Summary, p.GeneratedAtUtc,
+            p.Rules.Select(r => new StructureRuleResponse(
+                r.Id, r.Order, r.DocumentType.ToString(), r.Extension,
+                r.FolderPathTemplate, r.FileNameTemplate,
+                r.RequiredTokenSlots, r.Rationale)).ToList());
+
+    private static FileRelocationResponse MapRelocation(Brusca.Core.Models.Cleaning.FileRelocationRecord r) =>
+        new(r.Id, r.CleaningId, r.RedactedFileId,
+            r.OperationType.ToString(), r.ExecutionTarget.ToString(),
+            r.BeforePath, r.BeforeName, r.AfterPath, r.AfterName,
+            r.Status.ToString(), r.ErrorMessage, r.CreatedAtUtc, r.CompletedAtUtc);
     // ── Mapping helpers ───────────────────────────────────────────────────────
 
-    private static ApiResult<T> Ok<T>(T data) => new(true, data, null);
-    private static ApiResult<T> Fail<T>(IEnumerable<FluentResults.IError> errors) =>
+    private static ApiResult<T> Wrap<T>(T data) => new(true, data, null);
+    private static ApiResult<T> WrapFail<T>(IEnumerable<FluentResults.IError> errors) =>
         new(false, default, errors.Select(e => e.Message).ToList());
-    private static ApiResult<T> Fail<T>(IReadOnlyList<string> errors) =>
+    private static ApiResult<T> WrapFail<T>(IReadOnlyList<string> errors) =>
         new(false, default, errors);
 
     private static CleaningResponse MapToResponse(Cleaning c) =>

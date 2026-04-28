@@ -599,3 +599,46 @@ The entire application configuration is unified under the `Brusca` key so it can
 
 **How do I add a second database (e.g. for read replicas)?**
 Add `ReadOnlyDatabaseConnectionString` to `BruscaOptions`, read it in `DapperRepositoryBase` for read-only query methods, and add it to `appsettings.json`.
+
+
+---
+
+## PII pipeline integration (NEW)
+
+The PII redaction + structure-planning pipeline lives across two services and three repositories:
+
+| Layer | Type | Role |
+|-------|------|------|
+| `IPiiRedactionService`     | service    | strip PII -> token + segments |
+| `IDocumentTypeClassifier`  | service    | redacted text + extension -> `DocumentType` |
+| `IEncryptionService`       | service    | seal PII JSON column |
+| `IClaudeStructureService`  | service    | anonymized Claude call |
+| `IStructureExecutionService` | service  | apply plan + record before/after |
+| `IRedactedFileRepository`  | repository | per-file descriptor + encrypted PII |
+| `IStructurePlanRepository` | repository | persisted plans |
+| `IFileRelocationRepository`| repository | before/after operation log |
+
+All five services and three repositories are registered by `AddBruscaInfrastructure(configuration)`. To replace one, register your replacement AFTER that call:
+
+`csharp
+builder.Services.AddBruscaInfrastructure(builder.Configuration);
+builder.Services.Replace(ServiceDescriptor.Scoped<IPiiRedactionService, MyMlPiiRedactionService>());
+`
+
+### Endpoint -> service mapping
+
+| Endpoint | Service method |
+|----------|----------------|
+| `POST /redact`             | `ICleaningService.RedactAndClassifyAsync` |
+| `POST /generate-structure` | `ICleaningService.GenerateStructurePlanAsync` |
+| `GET  /structure-plan`     | `ICleaningService.GetStructurePlanAsync` |
+| `POST /execute-structure`  | `ICleaningService.ExecuteStructurePlanAsync` |
+| `GET  /relocations`        | `ICleaningService.GetRelocationsAsync` |
+
+### Privacy invariants \u2014 DO NOT BREAK
+
+1. Don't send raw file content to Claude. Only `DocumentTypeBucketResponse` aggregates are permitted.
+2. Don't log PII. The `IErrorLogger`/`IAuditLogger` calls in this repo intentionally never include `PiiSegment.Value`.
+3. Don't persist PII in cleartext. The only acceptable column is `cleaning.RedactedFile.EncryptedPiiJson`.
+4. Don't return PII in API responses. `RedactedFileResponse` never includes the encrypted blob.
+5. Don't decrypt PII anywhere except inside `StructureExecutionService.BuildTokenMap` for the duration of one file operation.
