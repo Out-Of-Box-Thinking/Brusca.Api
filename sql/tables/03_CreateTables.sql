@@ -599,4 +599,30 @@ END
 ELSE PRINT 'Table [archive].[PromotionRecord] already exists.';
 GO
 
+-- ─── cleaning.PathCredential ─────────────────────────────────────────────────
+-- Encrypted-at-rest credentials gating remote-share access for a Cleaning.
+-- Rows are deleted when the Cleaning is archived; never copied to archive.*.
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[cleaning].[PathCredential]') AND type = 'U')
+BEGIN
+    CREATE TABLE [cleaning].[PathCredential]
+    (
+        [Id]                UNIQUEIDENTIFIER NOT NULL,
+        [CleaningId]        UNIQUEIDENTIFIER NOT NULL,
+        [RootPath]          NVARCHAR(1024)   NOT NULL,
+        [Username]          NVARCHAR(256)    NOT NULL,
+        [EncryptedPassword] NVARCHAR(MAX)    NOT NULL,
+        [Domain]            NVARCHAR(256)    NULL,
+        [CreatedAtUtc]      DATETIME2(7)     NOT NULL DEFAULT SYSUTCDATETIME(),
+        [LastUsedAtUtc]     DATETIME2(7)     NULL,
+        CONSTRAINT [PK_cleaning_PathCredential] PRIMARY KEY CLUSTERED ([Id]) ON [FG_Data],
+        CONSTRAINT [FK_cleaning_PathCredential_Cleaning]
+            FOREIGN KEY ([CleaningId]) REFERENCES [cleaning].[Cleaning]([Id]) ON DELETE CASCADE
+    ) ON [FG_Data];
+    CREATE UNIQUE INDEX [IX_cleaning_PathCredential_Cleaning_RootPath]
+        ON [cleaning].[PathCredential] ([CleaningId], [RootPath]);
+    PRINT 'Table [cleaning].[PathCredential] created.';
+END
+ELSE PRINT 'Table [cleaning].[PathCredential] already exists.';
+GO
+
 PRINT '03_CreateTables.sql complete.';

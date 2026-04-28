@@ -270,6 +270,11 @@ BEGIN
     IF OBJECT_ID(N'[cleaning].[PromotionRecord]', N'U') IS NOT NULL
         DELETE FROM [cleaning].[PromotionRecord] WHERE [CleaningId] = @Id;
 
+    -- Path-access credentials are scoped to the active cleaning ONLY and are
+    -- NEVER mirrored to archive.* — purge unconditionally on archive.
+    IF OBJECT_ID(N'[cleaning].[PathCredential]', N'U') IS NOT NULL
+        DELETE FROM [cleaning].[PathCredential] WHERE [CleaningId] = @Id;
+
     IF OBJECT_ID(N'[cleaning].[FileRelocation]', N'U') IS NOT NULL
         DELETE FROM [cleaning].[FileRelocation] WHERE [CleaningId] = @Id;
 

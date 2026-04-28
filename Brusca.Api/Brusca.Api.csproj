@@ -12,8 +12,8 @@
 
   <ItemGroup>
     <!-- Core domain and infrastructure — consumed as NuGet packages from the shared local feed during development -->
-    <PackageReference Include="Brusca.Core" Version="1.0.1200-sanitize" />
-    <PackageReference Include="Brusca.Infrastructure" Version="1.0.1200-sanitize" />
+    <PackageReference Include="Brusca.Core" Version="1.0.1300-pathaccess" />
+    <PackageReference Include="Brusca.Infrastructure" Version="1.0.1300-pathaccess" />
   </ItemGroup>
 
   <ItemGroup>

@@ -117,4 +117,27 @@ BEGIN
 END
 GO
 
+-- ─── cleaning.PathCredential (Phase 10 — path access & credentials) ─────────
+IF NOT EXISTS (SELECT 1 FROM sys.objects WHERE object_id = OBJECT_ID(N'[cleaning].[PathCredential]') AND type = 'U')
+BEGIN
+    CREATE TABLE [cleaning].[PathCredential]
+    (
+        [Id]                UNIQUEIDENTIFIER NOT NULL,
+        [CleaningId]        UNIQUEIDENTIFIER NOT NULL,
+        [RootPath]          NVARCHAR(1024)   NOT NULL,
+        [Username]          NVARCHAR(256)    NOT NULL,
+        [EncryptedPassword] NVARCHAR(MAX)    NOT NULL,
+        [Domain]            NVARCHAR(256)    NULL,
+        [CreatedAtUtc]      DATETIME2(7)     NOT NULL DEFAULT SYSUTCDATETIME(),
+        [LastUsedAtUtc]     DATETIME2(7)     NULL,
+        CONSTRAINT [PK_cleaning_PathCredential] PRIMARY KEY CLUSTERED ([Id]),
+        CONSTRAINT [FK_cleaning_PathCredential_Cleaning]
+            FOREIGN KEY ([CleaningId]) REFERENCES [cleaning].[Cleaning]([Id]) ON DELETE CASCADE
+    );
+    CREATE UNIQUE INDEX [IX_cleaning_PathCredential_Cleaning_RootPath]
+        ON [cleaning].[PathCredential] ([CleaningId], [RootPath]);
+    PRINT 'Table [cleaning].[PathCredential] added.';
+END
+GO
+
 PRINT '03b_AlterTables_NewFeatures.sql complete.';
