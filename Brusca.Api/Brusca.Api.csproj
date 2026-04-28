@@ -12,7 +12,7 @@
 
   <ItemGroup>
     <!-- Core domain and infrastructure — consumed as NuGet packages from the shared local feed during development -->
-    <PackageReference Include="Brusca.Core" Version="1.0.999-pii" />
+    <PackageReference Include="Brusca.Core" Version="1.0.1000-pii" />
     <PackageReference Include="Brusca.Infrastructure" Version="1.0.999-pii" />
   </ItemGroup>
 
